@@ -1,6 +1,7 @@
 import cv2
 import sys
 import mediapipe as mp
+print(f"DEBUG: MediaPipe loaded from: {mp.__file__}")
 
 # Initialise MediaPipe Hands
 mp_hands = mp.solutions.hands
