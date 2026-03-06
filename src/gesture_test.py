@@ -7,26 +7,25 @@ mp_hands = mp.solutions.hands
 mp_draw = mp.solutions.drawing_utils
 hands = mp_hands.Hands(
     static_image_mode=False,
-    max_num_hands=1,
+    max_num_hands=2,
     min_detection_confidence=0.7,
     min_tracking_confidence=0.5
 )
 
-# Change index to whichever number your GO 3S was on
-cap = None
-for i in range(3):  # Try indices 0, 1, 2
-    print(f"Testing Camera Index {i}...")
-    temp_cap = cv2.VideoCapture(i)
-    if temp_cap.isOpened():
-        ret, test_frame = temp_cap.read()
-        if ret:
-            print(f"Success: Camera Index {i} is working. Resolution: {test_frame.shape}")
-            cap = temp_cap
-            break
-        temp_cap.release()
+# Load camera configuration
+try:
+    with open("camera_config.txt", "r") as f:
+        CAMERA_INDEX = int(f.read().strip())
+    print(f"Loading Camera Index {CAMERA_INDEX} from camera_config.txt...")
+except FileNotFoundError:
+    print("Error: 'camera_config.txt' not found.")
+    print("Please run 'python src/find_camera.py' first to select your camera.")
+    sys.exit()
 
-if cap is None:
-    print("Error: Could not open any video source.")
+cap = cv2.VideoCapture(CAMERA_INDEX)
+
+if not cap.isOpened():
+    print(f"Error: Could not open camera index {CAMERA_INDEX}.")
     sys.exit()
 
 while cap.isOpened():
