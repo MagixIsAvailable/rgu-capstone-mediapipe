@@ -43,9 +43,17 @@ while cap.isOpened():
 
     # Draw landmarks if hand detected
     if result.multi_hand_landmarks:
-        for hand_landmarks in result.multi_hand_landmarks:
+        for hand_landmarks, hand_info in zip(result.multi_hand_landmarks, result.multi_handedness):
             mp_draw.draw_landmarks(
                 frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+            
+            # Get handedness label (Left/Right)
+            label = hand_info.classification[0].label
+            
+            # Display label near the wrist (landmark 0)
+            h, w, _ = frame.shape
+            cx, cy = int(hand_landmarks.landmark[0].x * w), int(hand_landmarks.landmark[0].y * h)
+            cv2.putText(frame, label, (cx, cy - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
 
     cv2.imshow("MediaPipe GO 3S Test", frame)
 
