@@ -1,7 +1,7 @@
 # VisionInput — MediaPipe Gesture Controller for Immersive 360° Room
 
 **CM4134 Capstone Project | Robert Gordon University | 2025–26**  
-**Student:** [Your Name]  
+**Student:** Michal Lazovy 
 **Supervisor:** Dr John N.A. Brown  
 **External Partner:** James Hutton Institute, Aberdeen  
 
