@@ -1,4 +1,5 @@
 import cv2
+import sys
 import mediapipe as mp
 
 # Initialise MediaPipe Hands
@@ -12,13 +13,21 @@ hands = mp_hands.Hands(
 )
 
 # Change index to whichever number your GO 3S was on
-cap = cv2.VideoCapture(1)
-if not cap.isOpened():
-    print("Camera 1 not found. Trying Camera 0...")
-    cap = cv2.VideoCapture(0)
+cap = None
+for i in range(3):  # Try indices 0, 1, 2
+    print(f"Testing Camera Index {i}...")
+    temp_cap = cv2.VideoCapture(i)
+    if temp_cap.isOpened():
+        ret, test_frame = temp_cap.read()
+        if ret:
+            print(f"Success: Camera Index {i} is working. Resolution: {test_frame.shape}")
+            cap = temp_cap
+            break
+        temp_cap.release()
 
-if not cap.isOpened():
-    print("Error: Could not open video source.")
+if cap is None:
+    print("Error: Could not open any video source.")
+    sys.exit()
 
 while cap.isOpened():
     ret, frame = cap.read()
