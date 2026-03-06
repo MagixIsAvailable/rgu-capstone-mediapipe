@@ -21,7 +21,7 @@ def main():
                     break
                 
                 cv2.putText(frame, f"Camera Index {i}", (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                cv2.putText(frame, "Press 'y' to select, 'n' for next", (20, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                cv2.putText(frame, "Press 'y' to select, 'n' for next", (20, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
                 
                 cv2.imshow('Camera Selector', frame)
                 
