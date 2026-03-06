@@ -1,0 +1,21 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run Gesture Test",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/gesture_test.py",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "Run Find Camera",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/find_camera.py",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        }
+    ]
+}
