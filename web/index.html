@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>360° Gesture Test Environment</title>
+    <meta name="description" content="360° Gesture Test Environment">
+    <!-- Load A-Frame -->
+    <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+    <link rel="stylesheet" href="css/style.css">
+  </head>
+  <body>
+    <!-- Gesture Overlay -->
+    <div id="gesture-overlay">
+      <div id="gesture-display">Waiting for gestures...</div>
+    </div>
+
+    <!-- A-Frame Scene -->
+    <a-scene>
+      <a-assets>
+        <!-- Placeholder 360 image from A-Frame examples -->
+        <img id="sky" src="https://cdn.aframe.io/360-image-gallery-boilerplate/img/city.jpg" crossorigin="anonymous">
+      </a-assets>
+
+      <!-- 360 Background -->
+      <a-sky src="#sky"></a-sky>
+
+      <!-- Camera Rig for movement -->
+      <a-entity id="camera-rig" position="0 1.6 0">
+        <a-camera id="camera" look-controls wasd-controls="enabled: false"></a-camera>
+      </a-entity>
+    </a-scene>
+
+    <!-- Load custom script after A-Frame -->
+    <script src="js/app.js"></script>
+  </body>
+</html>
