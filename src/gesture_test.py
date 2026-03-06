@@ -144,7 +144,7 @@ async def main():
     base_options = python.BaseOptions(model_asset_path='hand_landmarker.task')
     options = vision.HandLandmarkerOptions(base_options=base_options,
                                            running_mode=vision.RunningMode.VIDEO,
-                                           num_hands=1)
+                                           num_hands=2)
     
     detector = vision.HandLandmarker.create_from_options(options)
 
