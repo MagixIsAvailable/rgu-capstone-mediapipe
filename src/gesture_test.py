@@ -38,7 +38,6 @@ while cap.isOpened():
         for hand_landmarks in result.multi_hand_landmarks:
             mp_draw.draw_landmarks(
                 frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
-        print("Hand detected")
 
     cv2.imshow("MediaPipe GO 3S Test", frame)
 
