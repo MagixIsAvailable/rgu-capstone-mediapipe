@@ -3,6 +3,8 @@ import sys
 import time
 from unittest.mock import MagicMock
 import numpy as np
+import os
+import urllib.request
 
 # FORCE MOCK SOUNDDEVICE: Avoid PortAudio initialization error
 sys.modules['sounddevice'] = MagicMock()
@@ -17,16 +19,23 @@ import websockets
 import json
 import math
 
+# Import the controller logic
+import vigem_output
+
+# Get the absolute path of the directory containing this script
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # Load camera configuration
 try:
-    with open("camera_config.txt", "r") as f:
+    config_path = os.path.join(SCRIPT_DIR, "camera_config.txt")
+    with open(config_path, "r") as f:
         camera_idx_str = f.read().strip()
         if not camera_idx_str:
              print("camera_config.txt is empty. Using default index 0.")
              CAMERA_INDEX = 0    
         else:
              CAMERA_INDEX = int(camera_idx_str)
-    print(f"Loading Camera Index {CAMERA_INDEX} from camera_config.txt...")
+    print(f"Loading Camera Index {CAMERA_INDEX} from {config_path}...")
 except FileNotFoundError:
     print("Error: 'camera_config.txt' not found.")
     print("Please run 'python src/find_camera.py' first to select your camera.")
@@ -110,10 +119,19 @@ def draw_landmarks_on_image(rgb_image, detection_result):
 def detect_gesture(landmarks):
     # Tip of Index Finger
     index_tip = landmarks[8]
+    index_pip = landmarks[6]
     # Tip of Thumb
     thumb_tip = landmarks[4]
     # Wrist
     wrist = landmarks[0]
+    
+    # Other fingers for pose detection
+    middle_tip = landmarks[12]
+    middle_pip = landmarks[10]
+    ring_tip = landmarks[16]
+    ring_pip = landmarks[14]
+    pinky_tip = landmarks[20]
+    pinky_pip = landmarks[18]
 
     # Calculate distance for Pinch gesture
     pinch_dist = math.sqrt(
@@ -121,27 +139,54 @@ def detect_gesture(landmarks):
         (index_tip.y - thumb_tip.y)**2
     )
 
-    gesture = None
-
+    # 1. PINCH (High Priority)
     if pinch_dist < 0.05:
-        gesture = "select"
-    elif wrist.x < 0.2:
-        gesture = "right"   # In mirrored view (webcam), left side of screen is user's right
-    elif wrist.x > 0.8:
-        gesture = "left"    # In mirrored view (webcam), right side of screen is user's left
-    elif wrist.y < 0.2:
-        gesture = "forward" # Top of screen
-    elif wrist.y > 0.8:
-        gesture = "back"    # Bottom of screen
+        return "select"
+
+    # 2. SCREEN EDGES (Navigation / Swipes)
+    # Check these before poses so you can move while holding a pose, 
+    # or prioritize movement at edges.
+    if wrist.x < 0.2: return "right"
+    if wrist.x > 0.8: return "left"
+    if wrist.y < 0.2: return "forward"
+    if wrist.y > 0.8: return "back"
+
+    # 3. POSE DETECTION
+    # Check if fingers are open (Tip Y < PIP Y means finger is pointing UP)
+    index_open = index_tip.y < index_pip.y
+    middle_open = middle_tip.y < middle_pip.y
+    ring_open = ring_tip.y < ring_pip.y
+    pinky_open = pinky_tip.y < pinky_pip.y
     
-    return gesture
+    fingers_open = sum([index_open, middle_open, ring_open, pinky_open])
+
+    # Thumb Up: Thumb tip is significantly above Index PIP (and other fingers closed)
+    thumb_is_up = thumb_tip.y < index_pip.y - 0.05
+
+    if fingers_open == 0:
+        if thumb_is_up: return "thumb_up"
+        return "fist"
+    
+    if fingers_open == 1 and index_open: return "point"
+    if fingers_open == 2 and index_open and middle_open: return "victory"
+    if fingers_open == 4: return "open"
+
+    return None
 
 # ----------------------------------------------------------------
 # Main Loop (Async)
 # ----------------------------------------------------------------
 async def main():
+    # Ensure model exists
+    model_path = os.path.join(SCRIPT_DIR, 'hand_landmarker.task')
+    if not os.path.exists(model_path):
+        print(f"Model '{model_path}' not found. Downloading...")
+        url = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
+        urllib.request.urlretrieve(url, model_path)
+        print("Download complete.")
+
     # Initialize Hand Landmarker
-    base_options = python.BaseOptions(model_asset_path='hand_landmarker.task')
+    base_options = python.BaseOptions(model_asset_path=model_path)
     options = vision.HandLandmarkerOptions(base_options=base_options,
                                            running_mode=vision.RunningMode.VIDEO,
                                            num_hands=2)
@@ -182,19 +227,40 @@ async def main():
             # 3. Draw and Check Gestures
             annotated_image = draw_landmarks_on_image(rgb, result)
             
-            active_gesture = None
             if result.hand_landmarks:
-                # Use first hand detected
-                hand_landmarks = result.hand_landmarks[0]
-                active_gesture = detect_gesture(hand_landmarks)
-                
-                if active_gesture:
-                    cv2.putText(annotated_image, active_gesture.upper(), (50, 50), 
-                               cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                for i, hand_landmarks in enumerate(result.hand_landmarks):
+                    # Get Handedness (Left or Right)
+                    # MediaPipe returns a list of classifications, we take the first one
+                    handedness = result.handedness[i][0].category_name
+                    
+                    # Detect Gesture (returns 'right', 'left', 'select', etc.)
+                    gesture = detect_gesture(hand_landmarks)
+                    
+                    # Map to ViGEm command labels
+                    vigem_label = "OPEN_PALM" # Default neutral state
+                    if gesture == "select": vigem_label = "PINCH"
+                    elif gesture == "fist": vigem_label = "CLOSED_FIST"
+                    elif gesture == "open": vigem_label = "OPEN_PALM"
+                    elif gesture == "point": vigem_label = "POINTING_UP"
+                    elif gesture == "victory": vigem_label = "VICTORY"
+                    elif gesture == "thumb_up": vigem_label = "THUMB_UP"
+                    elif gesture == "right": vigem_label = "SWIPE_RIGHT"
+                    elif gesture == "left": vigem_label = "SWIPE_LEFT"
+                    elif gesture == "forward": vigem_label = "SWIPE_UP"
+                    elif gesture == "back": vigem_label = "SWIPE_DOWN"
 
-            # 4. Send to WebSocket Clients
-            if active_gesture:
-                await broadcast({"gesture": active_gesture})
+                    # Send to Virtual Controller with Handedness
+                    vigem_output.apply_gesture(vigem_label, handedness)
+
+                    if gesture:
+                        # Visual Feedback
+                        cv2.putText(annotated_image, f"{handedness}: {gesture.upper()}", (50, 50 + i*40), 
+                                   cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                        # Send to Web Client
+                        await broadcast({"gesture": gesture})
+            else:
+                # Release controller if no gesture is detected
+                vigem_output.release_all()
 
             # Show the frame
             cv2.imshow("MediaPipe Gesture Controller", annotated_image)

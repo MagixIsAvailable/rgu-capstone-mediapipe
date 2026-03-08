@@ -1,4 +1,8 @@
 import cv2
+import os
+
+# Get the absolute path of the directory containing this script
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def main():
     print("Scanning cameras... Press 'y' to select, 'n' for next, 'q' to quit.")
@@ -27,9 +31,10 @@ def main():
                 
                 key = cv2.waitKey(1) & 0xFF
                 if key == ord('y'):
-                    with open("camera_config.txt", "w") as f:
+                    config_path = os.path.join(SCRIPT_DIR, "camera_config.txt")
+                    with open(config_path, "w") as f:
                         f.write(str(i))
-                    print(f"\n>>> SAVED CAMERA INDEX {i} to 'camera_config.txt' <<<")
+                    print(f"\n>>> SAVED CAMERA INDEX {i} to '{config_path}' <<<")
                     cap.release()
                     cv2.destroyAllWindows()
                     return
