@@ -1,13 +1,31 @@
 import sys
+import json
+import os
 
 # Global gamepad instance
 gamepad = None
 vg = None
+GESTURE_MAP = {}
 
 try:
     import vgamepad as vg
 except ImportError:
     print("[ViGEm] Error: 'vgamepad' module not found. Please run 'pip install vgamepad'.")
+
+# Load gesture map
+def load_gesture_map():
+    global GESTURE_MAP
+    try:
+        # Path relative to this script
+        map_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'gesture_map.json')
+        with open(map_path, 'r') as f:
+            GESTURE_MAP = json.load(f)
+        print(f"[ViGEm] Loaded gesture map from {map_path}")
+    except Exception as e:
+        print(f"[ViGEm] Warning: Could not load gesture_map.json: {e}")
+        GESTURE_MAP = {}
+
+load_gesture_map()
 
 def _get_gamepad():
     """Singleton accessor for the gamepad instance."""
@@ -44,20 +62,27 @@ def apply_gesture(gesture_label: str, hand: str):
     hand_side = hand.upper() if hand else ""
     
     # Mapping Logic
+    # Try to get action from map, default to None
+    action = GESTURE_MAP.get(hand_side, {}).get(label)
+
     if hand_side == "LEFT":
-        if label == "SWIPE_RIGHT":
+        if action == "JOYSTICK_RIGHT":
             gp.left_joystick_float(x_value_float=1.0, y_value_float=0.0)
-        elif label == "SWIPE_LEFT":
+        elif action == "JOYSTICK_LEFT":
             gp.left_joystick_float(x_value_float=-1.0, y_value_float=0.0)
-        elif label == "SWIPE_UP":
+        elif action == "JOYSTICK_UP":
             gp.left_joystick_float(x_value_float=0.0, y_value_float=1.0)
-        elif label == "SWIPE_DOWN":
+        elif action == "JOYSTICK_DOWN":
             gp.left_joystick_float(x_value_float=0.0, y_value_float=-1.0)
-        elif label == "OPEN_PALM":
+        elif action == "JOYSTICK_CENTER":
             gp.left_joystick_float(x_value_float=0.0, y_value_float=0.0)
-        elif label == "CLOSED_FIST":
+        elif action == "JOYSTICK_FORWARD_HALF":
             gp.left_joystick_float(x_value_float=0.0, y_value_float=0.5)
         else:
+            # Fallback for unmapped or explicitly NONE
+            if action != "NONE":
+                 # Could log warning here
+                 pass
             release_all()
             return
 
@@ -65,17 +90,17 @@ def apply_gesture(gesture_label: str, hand: str):
         # Clear previous buttons for this hand
         gp.report.wButtons = 0
         
-        if label == "PINCH":
+        if action == "BUTTON_A":
             gp.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_A)
-        elif label == "THUMB_UP":
+        elif action == "BUTTON_Y":
             gp.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_Y)
-        elif label == "THUMB_DOWN":
+        elif action == "BUTTON_B":
             gp.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_B)
-        elif label == "POINTING_UP":
+        elif action == "BUTTON_X":
             gp.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_X)
-        elif label == "VICTORY":
+        elif action == "SHOULDER_RIGHT":
             gp.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_RIGHT_SHOULDER)
-        elif label == "OPEN_PALM":
+        elif action == "NONE":
             # Buttons already cleared above
             pass
         else:

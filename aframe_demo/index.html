@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A-Frame 360 Fly Demo</title>
+    
+    <!-- 1. TECH STACK: Single file, A-Frame 1.4.0 CDN only -->
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+
+    <style>
+        body { margin: 0; overflow: hidden; }
+        
+        /* 5. INSTRUCTIONS OVERLAY */
+        #instructions {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent dark */
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+            pointer-events: none; /* Let clicks pass through */
+            z-index: 9999;
+            transition: opacity 0.5s;
+        }
+        
+        #instructions.hidden {
+            display: none;
+            opacity: 0;
+        }
+    </style>
+
+    <script>
+        // 4. GAMEPAD FLY COMPONENT
+        AFRAME.registerComponent('gamepad-fly', {
+            schema: {
+                // Movement speed: 0.05 units per tick
+                moveSpeed: { type: 'number', default: 0.05 },
+                // Rotation speed: 2 degrees per tick
+                lookSpeed: { type: 'number', default: 2.0 },
+                // Dead zone: 0.15 threshold
+                deadZone: { type: 'number', default: 0.15 }
+            },
+
+            init: function () {
+                // Initial rotation state
+                this.yaw = 0;
+                this.pitch = 0;
+                
+                // Get references to rig and camera
+                this.rig = this.el;
+                this.camera = this.el.querySelector('a-camera');
+                
+                // Instructions overlay
+                this.overlay = document.getElementById('instructions');
+                this.gamepadConnected = false;
+                
+                // Check for gamepad connection every 2s
+                this.checkInterval = setInterval(() => {
+                    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+                    if (gamepads[0]) {
+                        this.gamepadConnected = true;
+                        if (this.overlay) {
+                            this.overlay.classList.add('hidden');
+                        }
+                        // Create valid directional vectors based on rotation once connected
+                        // (Though we calculate them every tick for movement)
+                    }
+                }, 2000);
+            },
+
+            tick: function (time, timeDelta) {
+                // 1. Poll Gamepad
+                const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+                const gamepad = gamepads[0];
+                
+                // If no gamepad found, skip tick
+                if (!gamepad) return;
+
+                const data = this.data;
+                const axes = gamepad.axes;
+
+                // 2. Dead Zone Helper
+                const applyDeadZone = (val) => {
+                    return Math.abs(val) < data.deadZone ? 0 : val;
+                };
+
+                // Get axis values with deadzone applied
+                const strafeInput = applyDeadZone(axes[0]);   // Left Stick X
+                const forwardInput = applyDeadZone(axes[1]);  // Left Stick Y (Up is -1, Down is +1)
+                const yawInput = applyDeadZone(axes[2]);      // Right Stick X
+                const pitchInput = applyDeadZone(axes[3]);    // Right Stick Y
+
+                // 4. RIGHT STICK: Rotation (Yaw & Pitch)
+                if (yawInput !== 0 || pitchInput !== 0) {
+                    // Yaw (Rotate Rig Y): Right Stick X
+                    // Standard: Right (+) -> Turn Right (-Y in A-Frame? No, usually -X is Right in world, but rotation?)
+                    // Let's use standard convention: Stick Right -> Turn Right (decrease Yaw or increase?)
+                    // A-Frame Default Look Controls: Drag Right -> Rotates Camera Left (Yaw increases)
+                    // Let's make Stick Right -> Turn Right (Yaw decreases in Three.js right-handed Y-up)
+                    this.yaw -= yawInput * data.lookSpeed;
+
+                    // Pitch (Rotate Camera X): Right Stick Y
+                    // Stick Up (-1) -> Look Up (Positive X rotation? No, usually X rotation + is down looking)
+                    // Let's try: Stick Up -> Pitch decreases (Look Up)
+                    this.cameraPitch -= pitchInput * data.lookSpeed; // Wait, let's use local var
+                    
+                    // Actually let's use a simpler approach:
+                    // Stick Down (+1) -> Look Down (+X rot)
+                    // Stick Up (-1) -> Look Up (-X rot)
+                    // So we ADD the input.
+                    this.pitch += pitchInput * data.lookSpeed; 
+
+                    // Clamp pitch between -80 and +80 degrees
+                    this.pitch = Math.max(-80, Math.min(80, this.pitch));
+
+                    // Apply rotation to objects
+                    // Rig handles Yaw (Y-axis)
+                    this.rig.object3D.rotation.y = THREE.MathUtils.degToRad(-this.yaw); // Invert to match intuitive feel if needed, let's test straight.
+                    // Actually, let's execute straight mapping.
+                    // Stick Right (+1) -> Yaw += 2 -> Rotation Y += 2 deg.
+                    // Positive Y rotation turns LEFT in 3D space usually.
+                    // So we WANT right stick to turn right -> Rotation Y decreases.
+                    
+                    // Apply:
+                    this.rig.object3D.rotation.y = THREE.MathUtils.degToRad(this.yaw);
+                    
+                    // Camera handles Pitch (X-axis)
+                    if (this.camera) {
+                        this.camera.object3D.rotation.x = THREE.MathUtils.degToRad(this.pitch);
+                    }
+                }
+
+                // 3. LEFT STICK: Movement (Calculated from Rotation)
+                if (strafeInput !== 0 || forwardInput !== 0) {
+                    // Get rig's current Y rotation in radians
+                    const angle = this.rig.object3D.rotation.y;
+                    
+                    // Calculate directional vectors manually
+                    // Forward (-Z in local)
+                    // x = -sin(angle), z = -cos(angle)
+                    
+                    // Right (+X in local)
+                    // x = cos(angle), z = -sin(angle)
+                    
+                    // Calculate displacement (delta)
+                    // Forward Input (Stick Up = -1). We want to move Forward.
+                    // So we multiply by -forwardInput.
+                    
+                    // Strafe Input (Stick Right = +1). We want to move Right.
+                    // So we multiply by strafeInput.
+
+                    const speed = data.moveSpeed;
+
+                    // Forward Component
+                    // fwd_dx = -Math.sin(angle) * (-forwardInput * speed)
+                    // fwd_dz = -Math.cos(angle) * (-forwardInput * speed)
+                    
+                    // Strafe Component
+                    // str_dx = Math.cos(angle) * (strafeInput * speed)
+                    // str_dz = -Math.sin(angle) * (strafeInput * speed)
+
+                    // Combine
+                    const dx = (Math.sin(angle) * forwardInput * speed) + (Math.cos(angle) * strafeInput * speed);
+                    const dz = (Math.cos(angle) * forwardInput * speed) + (-Math.sin(angle) * strafeInput * speed);
+
+                    // 5. Use setAttribute / object3D position update
+                    this.rig.object3D.position.x += dx;
+                    this.rig.object3D.position.z += dz;
+                }
+            }
+        });
+
+        // 6. RESPONSIVE: Window Resize Listener
+        window.addEventListener('resize', function () {
+            const scene = document.querySelector('a-scene');
+            if (scene && scene.renderer && scene.camera) {
+                // Update renderer size
+                scene.renderer.setSize(window.innerWidth, window.innerHeight);
+                // Update camera aspect
+                scene.camera.aspect = window.innerWidth / window.innerHeight;
+                scene.camera.updateProjectionMatrix();
+            }
+        });
+    </script>
+</head>
+<body>
+
+    <!-- 5. INSTRUCTIONS OVERLAY -->
+    <div id="instructions">
+        LEFT STICK — move&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;RIGHT STICK — look&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;Connect gamepad to fly
+    </div>
+
+    <!-- 7. SCENE & PERFORMANCE -->
+    <!-- antialias: true, logarithmicDepthBuffer: true, no shadows (shadows="false" is default if not enabled) -->
+    <!-- stats="false" -->
+    <a-scene 
+        renderer="antialias: true; logarithmicDepthBuffer: true; colorManagement: true;"
+        vr-mode-ui="enabled: false"
+        background="color: #000000"
+        stats="false">
+
+        <!-- ASSETS -->
+        <a-assets>
+            <!-- 2. SKYBOX ASSET -->
+            <!-- 
+                NOTE: .hdr files are binary and require a web server to load (due to CORS/XHR).
+                If opening this file directly via file://, the HDR will fail to load.
+                To fix: Run a local server (e.g., Python: 'python -m http.server' or VS Code Live Server).
+                
+                For 'file://' support (drag-and-drop), convert sky.hdr to sky.jpg.
+            -->
+            <a-asset-item id="sky-hdr" src="sky.hdr"></a-asset-item>
+        </a-assets>
+
+        <!-- 2. SKYBOX ENTITY -->
+        <!-- Fallback color is a dark blue #001133 if src fails -->
+        <a-sky src="#sky-hdr" rotation="0 -90 0" color="#001133"></a-sky>
+
+        <!-- LIGHTING -->
+        <a-light type="ambient" color="#CCC"></a-light>
+        <a-light type="directional" position="-1 1 1" color="#FFF" intensity="0.5"></a-light>
+
+        <!-- REFERENCE OBJECTS (To visualize movement) -->
+        <!-- Floor grid -->
+        <a-entity id="environment">
+            <a-grid helper visible="false"></a-grid> 
+            <!-- Manual grid lines or objects -->
+            <a-plane rotation="-90 0 0" width="100" height="100" color="#111"></a-plane>
+            <a-box position="-5 0.5 -5" color="#EF2D5E"></a-box>
+            <a-box position="5 0.5 -5" color="#4CC3D9"></a-box>
+            <a-box position="-5 0.5 5" color="#FFC65D"></a-box>
+            <a-box position="5 0.5 5" color="#7BC8A4"></a-box>
+        </a-entity>
+
+        <!-- CAMERA RIG -->
+        <!-- Position 0 1.6 0 as requested -->
+        <a-entity id="rig" position="0 1.6 0" gamepad-fly>
+            <!-- CAMERA -->
+            <!-- Look controls disabled as requested -->
+            <a-camera look-controls-enabled="false" wasd-controls-enabled="false" position="0 0 0"></a-camera>
+        </a-entity>
+
+    </a-scene>
+</body>
+</html>

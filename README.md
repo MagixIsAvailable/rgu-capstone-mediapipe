@@ -1,68 +1,47 @@
-# VisionInput — MediaPipe Gesture Controller for Immersive 360° Room
+﻿# VisionInput — MediaPipe gesture-based Xbox controller wrapper
 
-**CM4134 Capstone Project | Robert Gordon University | 2025–26**  
-**Student:** Michal Lazovy 
-**Supervisor:** Dr John N.A. Brown  
-**External Partner:** James Hutton Institute, Aberdeen  
+**VisionInput** is a plug-and-play gesture controller that replaces standard PC game controller input in an immersive 360° room environment using real-time hand gesture detection.
 
----
+## Prerequisites
+- **OS**: Windows 10 or Windows 11
+- **Python**: Version 3.10 or higher
+- **Driver**: ViGEmBus driver installed (Required for virtual controller emulation)
 
-## Project Overview
+## Installation
 
-VisionInput is a plug-and-play gesture controller that replaces standard 
-PC game controller input in an immersive 360° room environment using 
-real-time hand gesture detection.
+1. **Install ViGEmBus Driver**
+   - Download and install the latest release from:  
+     [https://github.com/nefarius/ViGEmBus/releases](https://github.com/nefarius/ViGEmBus/releases)
 
-A USB camera (Insta360 GO 3S) captures the user's hand gestures via 
-Google MediaPipe. The wrapper translates detected gestures into 
-HID-compatible controller events, which the game receives as if a 
-standard controller is connected — no changes to the game required.
+2. **Clone the Repository**
+   ```bash
+   git clone https://github.com/MagixIsAvailable/rgu-capstone-mediapipe.git
+   cd rgu-capstone-mediapipe
+   ```
 
----
+3. **Install Dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-## Research Questions
+## Usage
 
-- **RQ1:** How can a MediaPipe gesture pipeline be architected as a 
-plug-and-play input wrapper replacing PC controller input in a 360° room?
-- **RQ2:** What gesture vocabulary best supports 360° navigation with 
-acceptable latency and usability?
-- **RQ3:** What are the trade-offs of browser vs edge hardware deployment?
+1. Connect your webcam.
+2. Run the wrapper script:
+   ```bash
+   python gesture_wrapper.py
+   ```
+3. The script will:
+   - Download the necessary MediaPipe model (`hand_landmarker.task`) automatically on first run.
+   - Start a camera feed window visualizing detected gestures.
+   - Create a virtual Xbox 360 controller labeled "VisionInput".
 
----
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Camera | Insta360 GO 3S (USB webcam mode) |
-| Vision / ML | Google MediaPipe Hands + Gesture Recognizer |
-| Controller emulation | ViGEm Bus Driver (virtual HID controller) |
-| Primary integration | Unity Input System — JHI immersive room game |
-| Fallback / parallel | MediaPipe JS + A-Frame — tested in Meta Quest 3S |
-| Development | VS Code + GitHub Copilot + Python |
-
----
+## Configuration
+- **Camera Selection**: To change the camera index (default is 0), create or edit `src/camera_config.txt` inside the `src/` folder with the index number (e.g., `1`).
+- **Gesture Mapping**: Edit `gesture_map.json` in the root directory to customize controller bindings.
 
 ## Project Structure
-```
-src/          — core gesture pipeline and wrapper code
-docs/         — project log, architecture diagrams, meeting notes
-assets/       — diagrams, screenshots, demo footage
-```
-
----
-
-## Key Deadlines
-
-| Milestone | Date |
-|---|---|
-| Poster submission | 26 March 2026 |
-| Final report | 23 April 2026 |
-| Degree Show | 30 April 2026 |
-
----
-
-## Disclaimer
-
-This repository is private and submitted as part of CM4134 Capstone 
-Project at Robert Gordon University. 
+- `gesture_wrapper.py`: Main entry point.
+- `src/`: Core logic and helper scripts.
+- `gesture_map.json`: Gesture-to-controller mapping configuration.
+- `requirements.txt`: Python package dependencies.

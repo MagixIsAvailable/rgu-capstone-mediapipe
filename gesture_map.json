@@ -1,0 +1,18 @@
+{
+    "LEFT": {
+        "SWIPE_RIGHT": "JOYSTICK_RIGHT",
+        "SWIPE_LEFT": "JOYSTICK_LEFT",
+        "SWIPE_UP": "JOYSTICK_UP",
+        "SWIPE_DOWN": "JOYSTICK_DOWN",
+        "OPEN_PALM": "JOYSTICK_CENTER",
+        "CLOSED_FIST": "JOYSTICK_FORWARD_HALF"
+    },
+    "RIGHT": {
+        "PINCH": "BUTTON_A",
+        "THUMB_UP": "BUTTON_Y",
+        "THUMB_DOWN": "BUTTON_B",
+        "POINTING_UP": "BUTTON_X",
+        "VICTORY": "SHOULDER_RIGHT",
+        "OPEN_PALM": "NONE"
+    }
+}
