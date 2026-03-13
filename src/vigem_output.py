@@ -52,8 +52,8 @@ def release_all():
         gp.update()
         print("[ViGEm] Released all inputs.")
 
-def apply_gesture(gesture_label: str, hand: str):
-    """Maps a gesture string to a specific controller input."""
+def apply_gesture(gesture_label: str, hand: str, wrist_x: float = 0.0, wrist_y: float = 0.0):
+    """Maps a gesture string or wrist coords to controller input."""
     gp = _get_gamepad()
     if not gp:
         return
@@ -66,25 +66,13 @@ def apply_gesture(gesture_label: str, hand: str):
     action = GESTURE_MAP.get(hand_side, {}).get(label)
 
     if hand_side == "LEFT":
-        if action == "JOYSTICK_RIGHT":
-            gp.left_joystick_float(x_value_float=1.0, y_value_float=0.0)
-        elif action == "JOYSTICK_LEFT":
-            gp.left_joystick_float(x_value_float=-1.0, y_value_float=0.0)
-        elif action == "JOYSTICK_UP":
-            gp.left_joystick_float(x_value_float=0.0, y_value_float=1.0)
-        elif action == "JOYSTICK_DOWN":
-            gp.left_joystick_float(x_value_float=0.0, y_value_float=-1.0)
-        elif action == "JOYSTICK_CENTER":
+        # Continuous Joystick Control with Deadzone
+        if abs(wrist_x) < 0.15 and abs(wrist_y) < 0.15:
+            # Deadzone: Center joystick
             gp.left_joystick_float(x_value_float=0.0, y_value_float=0.0)
-        elif action == "JOYSTICK_FORWARD_HALF":
-            gp.left_joystick_float(x_value_float=0.0, y_value_float=0.5)
         else:
-            # Fallback for unmapped or explicitly NONE
-            if action != "NONE":
-                 # Could log warning here
-                 pass
-            release_all()
-            return
+            # Apply normalised coordinates directly
+            gp.left_joystick_float(x_value_float=wrist_x, y_value_float=wrist_y)
 
     elif hand_side == "RIGHT":
         # Clear previous buttons for this hand
@@ -113,7 +101,7 @@ def apply_gesture(gesture_label: str, hand: str):
     # Send the report to the virtual bus
     try:
         gp.update()
-        print(f"[ViGEm] {hand} hand: {gesture_label} -> sent")
+        # print(f"[ViGEm] {hand} hand: {gesture_label} -> sent")
     except Exception as e:
         print(f"[ViGEm] Error updating controller: {e}")
 

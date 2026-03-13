@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mixamo Character Controller - MediaPipe Gesture</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: sans-serif; }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: #333;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+            pointer-events: none;
+        }
+        #connection-status {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 8px 15px;
+            border-radius: 20px;
+            color: white;
+            font-weight: bold;
+        }
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 10px;
+            background-color: red;
+            box-shadow: 0 0 5px rgba(0,0,0,0.5);
+        }
+        .connected { background-color: #00ff00; box-shadow: 0 0 8px #00ff00; }
+        #gesture-display {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 24px;
+            color: white;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 10px 30px;
+            border-radius: 30px;
+            text-align: center;
+            min-width: 200px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        #drop-zone {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            display: none;
+            background: rgba(0,0,0,0.5);
+            z-index: 100;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 2em;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        body.dragging #drop-zone {
+            opacity: 1;
+        }
+        .instructions {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #555;
+            pointer-events: none;
+            background: rgba(255,255,255,0.9);
+            padding: 20px;
+            border-radius: 10px;
+            display: none;
+        }
+    </style>
+    <!-- Use Three.js r128 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Loaders -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/FBXLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/fflate.min.js"></script>
+</head>
+<body>
+
+    <!-- Instructions / Usage Note -->
+    <!-- 
+    USAGE:
+    1. Export character from Mixamo as GLB with animations
+    2. Save as character.glb in same folder as this HTML file (optional, or drag and drop)
+    3. Run your Python MediaPipe wrapper (WebSocket server on port 8765)
+    4. Open this HTML file in browser
+    5. Wave hands to control character
+    -->
+
+    <div id="info">
+        <h3>Mixamo Character Controller</h3>
+        <p>1. Ensure WebSocket server is running (ws://localhost:8765)</p>
+        <p>2. Drag & Drop a Mixamo .glb/.fbx character here</p>
+        <p>3. Or name it <b>character.glb</b> in this folder</p>
+    </div>
+
+    <div id="connection-status">
+        <div id="status-dot" class="status-dot"></div>
+        <span id="status-text">Disconnected</span>
+    </div>
+
+    <div id="gesture-display">Waiting for input...</div>
+    
+    <div id="drop-zone">Drop Character File Here</div>
+    <div id="loading-msg" class="instructions">Loading Character...</div>
+
+    <script>
+        // --- 1. CONFIGURATION ---
+        const WS_URL = 'ws://localhost:8765';
+        const DEFAULT_MODEL = './character.glb'; // Try to load this automatically
+        const DEAD_ZONE = 0.15;
+        const RUN_THRESHOLD = 0.7;
+        const MOVEMENT_SPEED_FACTOR = 0.15; // Adjusted for better feel
+        const ROTATION_SPEED = 0.05;
+        const CAMERA_OFFSET = new THREE.Vector3(0, 3, -5); // Behind and up
+        const CAMERA_SMOOTH = 0.1;
+        
+        // Advanced Control Settings
+        const USE_STRAFING_CONTROLS = false; // Set to TRUE to enable strafing (requires Left/Right animations)
+
+        // --- 2. SCENE SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB); // Sky blue
+        scene.fog = new THREE.Fog(0x87CEEB, 10, 50);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        // Lights
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444);
+        hemiLight.position.set(0, 20, 0);
+        scene.add(hemiLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff);
+        dirLight.position.set(0, 20, 10);
+        dirLight.castShadow = true;
+        dirLight.shadow.camera.top = 180;
+        dirLight.shadow.camera.bottom = -100;
+        dirLight.shadow.camera.left = -120;
+        dirLight.shadow.camera.right = 120;
+        scene.add(dirLight);
+
+        // Ground
+        const mesh = new THREE.Mesh(
+            new THREE.PlaneGeometry(200, 200),
+            new THREE.MeshPhongMaterial({ color: 0x999999, depthWrite: false })
+        );
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.receiveShadow = true;
+        scene.add(mesh);
+
+        const grid = new THREE.GridHelper(200, 40, 0x000000, 0x000000);
+        grid.material.opacity = 0.2;
+        grid.material.transparent = true;
+        scene.add(grid);
+
+        // --- 3. VARIABLES ---
+        let character = null;
+        let mixer = null;
+        let animations = {}; // { idle: Action, walk: Action, run: Action }
+        let currentAction = null;
+        let inputState = { x: 0, y: 0, gesture: "WAITING" };
+        
+        let ws = null;
+        let reconnectInterval = null;
+
+        // UI Elements
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+        const gestureDisplay = document.getElementById('gesture-display');
+        const loadingMsg = document.getElementById('loading-msg');
+
+        // --- 4. WEBSOCKET CONNECTION ---
+        function connectWebSocket() {
+            ws = new WebSocket(WS_URL);
+
+            ws.onopen = () => {
+                console.log("WebSocket connected");
+                statusDot.classList.add('connected');
+                statusText.innerText = "Connected";
+                if (reconnectInterval) clearInterval(reconnectInterval);
+            };
+
+            ws.onclose = () => {
+                console.log("WebSocket disconnected");
+                statusDot.classList.remove('connected');
+                statusText.innerText = "Disconnected";
+                // Try reconnect
+                if (!reconnectInterval) {
+                     reconnectInterval = setInterval(connectWebSocket, 3000);
+                }
+            };
+
+            ws.onerror = (err) => {
+                console.error("WebSocket error:", err);
+                ws.close();
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    // Expected: {x: float, y: float, gesture: string}
+                    if (data.x !== undefined && data.y !== undefined) {
+                        inputState.x = parseFloat(data.x);
+                        inputState.y = parseFloat(data.y);
+                    }
+                    if (data.gesture) {
+                        inputState.gesture = data.gesture;
+                        gestureDisplay.innerText = data.gesture;
+                    }
+                } catch (e) {
+                    console.error("Invalid JSON:", event.data);
+                }
+            };
+        }
+
+        connectWebSocket();
+
+        // --- 5. CHARACTER LOADING & ANIMATION ---
+        const clock = new THREE.Clock();
+
+        function loadCharacter(url, filename) {
+            loadingMsg.style.display = 'block';
+            
+            // Determine loader based on extension
+            let loader;
+            if (filename.toLowerCase().endsWith('.fbx')) {
+                loader = new THREE.FBXLoader();
+            } else {
+                loader = new THREE.GLTFLoader();
+            }
+
+            loader.load(url, 
+                (object) => { // onLoad
+                    loadingMsg.style.display = 'none';
+                    if (character) scene.remove(character);
+
+                    // GLTF usually wraps scene in object.scene, FBX returns the Group directly
+                    const model = object.scene || object;
+                    character = model;
+
+                    // AUTO-SCALE and POSITION
+                    // Compute the bounding box to determine size
+                    const box = new THREE.Box3().setFromObject(character);
+                    const size = box.getSize(new THREE.Vector3());
+                    
+                    // If character is huge (e.g. > 5m tall), scale it down to approx 1.8m
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    if (maxDim > 0) {
+                        const targetHeight = 1.8; // Standard human height
+                        const scaleFactor = targetHeight / size.y; 
+                        character.scale.set(scaleFactor, scaleFactor, scaleFactor);
+                    }
+
+                    character.traverse(function (object) {
+                        if (object.isMesh) object.castShadow = true;
+                    });
+
+                    scene.add(character);
+                    character.position.set(0, 0, 0);
+
+                    // Setup Animations
+                    mixer = new THREE.AnimationMixer(character);
+                    const clips = object.animations;
+                    
+                    if (clips && clips.length > 0) {
+                        // Mixamo exports usually name animations like "mixamo.com". 
+                        // We try to identify idle, walk, run.
+                        // STRATEGY: 
+                        // If 3 clips: assume 0=idle, 1=walk, 2=run (common mixamo pack order)
+                        // If named, use names. 
+                        
+                        // Let's print names to console to help debugging
+                        console.log("Loaded animations:", clips.map(c => c.name));
+
+                        // Heuristic naming or fallback to index
+                        const idleClip = clips.find(c => c.name.toLowerCase().includes('idle')) || clips[0];
+                        const walkClip = clips.find(c => c.name.toLowerCase().includes('walk') && !c.name.toLowerCase().includes('left') && !c.name.toLowerCase().includes('right')) || clips[1] || clips[0];
+                        const runClip = clips.find(c => c.name.toLowerCase().includes('run')) || clips[2] || walkClip;
+
+                        animations['Idle'] = mixer.clipAction(idleClip);
+                        animations['Walk'] = mixer.clipAction(walkClip);
+                        animations['Run'] = mixer.clipAction(runClip);
+
+                        // Optional Strafing Animations
+                        const leftClip = clips.find(c => c.name.toLowerCase().includes('left'));
+                        const rightClip = clips.find(c => c.name.toLowerCase().includes('right'));
+                        const backClip = clips.find(c => c.name.toLowerCase().includes('back') || c.name.toLowerCase().includes('reverse'));
+
+                        if (leftClip) animations['Left'] = mixer.clipAction(leftClip);
+                        if (rightClip) animations['Right'] = mixer.clipAction(rightClip);
+                        if (backClip) animations['Back'] = mixer.clipAction(backClip);
+
+                        // Start with Idle
+                        currentAction = animations['Idle'];
+                        currentAction.play();
+                    }
+                }, 
+                (xhr) => { // onProgress
+                    console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+                },
+                (error) => { // onError
+                    console.error('An error happened', error);
+                    loadingMsg.innerText = "Error loading model";
+                }
+            );
+        }
+
+        // Try load default
+        loadCharacter(DEFAULT_MODEL, 'character.glb');
+
+
+        // --- 6. DRAG AND DROP ---
+        document.body.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            document.body.classList.add('dragging');
+        });
+
+        document.body.addEventListener('dragleave', () => {
+            document.body.classList.remove('dragging');
+        });
+
+        document.body.addEventListener('drop', (e) => {
+            e.preventDefault();
+            document.body.classList.remove('dragging');
+            const file = e.dataTransfer.files[0];
+            if (file) {
+                const url = URL.createObjectURL(file);
+                loadCharacter(url, file.name);
+            }
+        });
+
+        // --- 6.5. GAMEPAD SUPPORT ---
+        window.addEventListener("gamepadconnected", (e) => {
+            console.log("Gamepad connected:", e.gamepad);
+            statusText.innerText = "Gamepad/WS Ready";
+        });
+
+        function getGamepadInput() {
+            const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+            if (!gamepads) return { x: 0, y: 0 };
+            
+            // Use first connected gamepad
+            const gp = gamepads[0]; 
+            if (gp) {
+                // Axis 0: Left Stick X (-1 Left, 1 Right)
+                // Axis 1: Left Stick Y (-1 Up, 1 Down) -> Needs inverting to match our Up-Positive/Down-Negative Y logic?
+                // Actually our logic says: Y positive is Forward. 
+                // Gamepads standard: Up is -1. So we invert Axis 1.
+                // But wait, our `inputState.y` logic previously (from gesture) was:
+                // "y: 0 (top) -> 1.0, 1 (bottom) -> -1.0 (Inverted for Joystick Up/Forward)"
+                // So here, -Axis1 gives us Positive for Up.
+                
+                const gpX = gp.axes[0];
+                const gpY = -gp.axes[1]; 
+
+                if (Math.abs(gpX) > 0.1 || Math.abs(gpY) > 0.1) {
+                    return { x: gpX, y: gpY, active: true };
+                }
+            }
+            return { x: 0, y: 0, active: false };
+        }
+
+
+        // --- 7. GAME LOOP ---
+        function update() {
+            const delta = clock.getDelta();
+            
+            if (mixer) mixer.update(delta);
+
+            if (character) {
+                // Poll Gamepad
+                const gpInput = getGamepadInput();
+                
+                let x, y;
+                
+                // Prioritize Gamepad if active, else use WebSocket Input
+                if (gpInput.active) {
+                    x = gpInput.x;
+                    y = gpInput.y;
+                } else {
+                    x = inputState.x;
+                    y = inputState.y;
+                }
+
+                // 2D Input Vector Magnitude
+                const inputMagnitude = Math.sqrt(x*x + y*y);
+
+                let newActionName = 'Idle';
+
+                // --- MOVEMENT LOGIC ---
+                if (inputMagnitude > DEAD_ZONE) {
+                    
+                    let moveSpeed = inputMagnitude * 3.0 * delta; 
+                    
+                    if (USE_STRAFING_CONTROLS) {
+                        // --- STRAFING LOGIC (Move without rotating) ---
+                        // Move character relative to camera/world
+                        // In this simple setup, X is Left/Right, Y is Fwd/Back
+                        
+                        character.translateX(x * moveSpeed);
+                        character.translateZ(y * moveSpeed); 
+                        
+                        // Simple 4-way animation selection
+                        if (Math.abs(y) > Math.abs(x)) {
+                            // Moving Forward/Back
+                            if (y > 0) { // Forward ? Depends on joystick mapping. Let's assume input y>0 is forward
+                                newActionName = (inputMagnitude > RUN_THRESHOLD && animations['Run']) ? 'Run' : 'Walk';
+                            } else {
+                                newActionName = (animations['Back']) ? 'Back' : 'Walk'; 
+                                // If no back animation, maybe walk? Or stay idle?
+                            }
+                        } else {
+                            // Moving Left/Right
+                            if (x > 0) { // Right ?
+                                newActionName = (animations['Right']) ? 'Right' : 'Walk';
+                            } else { // Left
+                                newActionName = (animations['Left']) ? 'Left' : 'Walk';
+                            }
+                        }
+
+                    } else {
+                        // --- STANDARD "TURN AND MOVE" LOGIC ---
+                        
+                        // 1. Rotation: Face direction of input
+                        // angle = Math.atan2(x, y) 
+                        const targetRotation = Math.atan2(x, y); 
+                        
+                        // Smooth rotation
+                        const qval = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), targetRotation);
+                        character.quaternion.slerp(qval, 0.1);
+
+                        // 2. Position: Move forward in the direction character is facing
+                        
+                        if (inputMagnitude > RUN_THRESHOLD && animations['Run']) {
+                            newActionName = 'Run';
+                        } else {
+                            newActionName = 'Walk';
+                            // Adjust speed for walk if needed, or keep analog
+                        }
+
+                        character.translateZ(moveSpeed); // Local forward
+                    }
+
+                    // --- ANIMATION BLENDING ---
+                    if (currentAction !== animations[newActionName]) {
+                        if (currentAction) currentAction.fadeOut(0.2);
+                        const nextAction = animations[newActionName];
+                        if (nextAction) {
+                            nextAction.reset().fadeIn(0.2).play();
+                            currentAction = nextAction;
+                        }
+                    }
+
+                } else {
+                    // IDLE
+                    if (currentAction !== animations['Idle']) {
+                        if (currentAction) currentAction.fadeOut(0.2);
+                        const nextAction = animations['Idle'];
+                        if (nextAction) {
+                            nextAction.reset().fadeIn(0.2).play();
+                            currentAction = nextAction;
+                        }
+                    }
+                }
+                
+                // --- CAMERA FOLLOW ---
+                // Calculate ideal camera position behind the character
+                // We use a relative offset (0, 2.5, -4) - adjust -4/4 depending on model forward
+                // Most Mixamo GLBs face +Z. So "Behind" is -Z.
+                
+                // Calculate world position for the camera "chase" target
+                // We use getDirection to find where "back" is
+                const currentPos = character.position.clone();
+                const vOffset = new THREE.Vector3(0, 2.5, -4.5); // Up 2.5m, Back 4.5m
+                
+                // Apply rotation to offset
+                vOffset.applyQuaternion(character.quaternion);
+                
+                // Add to current position
+                const idealPos = currentPos.clone().add(vOffset);
+
+                // Smoothly move camera
+                camera.position.lerp(idealPos, 0.1);
+                
+                // Look slightly above the character's feet (approx head height)
+                const lookAtPos = currentPos.clone().add(new THREE.Vector3(0, 1.5, 0));
+                camera.lookAt(lookAtPos);
+            }
+
+            requestAnimationFrame(update);
+            renderer.render(scene, camera);
+        }
+
+        // Handle resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Start Loop
+        update();
+
+    </script>
+</body>
+</html>

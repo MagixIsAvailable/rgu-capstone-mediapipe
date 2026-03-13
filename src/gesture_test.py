@@ -1,6 +1,7 @@
 import cv2
 import sys
 import time
+import argparse
 from unittest.mock import MagicMock
 import numpy as np
 import os
@@ -10,17 +11,20 @@ import urllib.request
 sys.modules['sounddevice'] = MagicMock()
 
 import mediapipe as mp
-# Use the new Tasks API
-from mediapipe.tasks import python
-from mediapipe.tasks.python import vision
-
 import asyncio
 import websockets
 import json
 import math
+import contextlib
+
+WEBSOCKET_ENABLED = False
 
 # Import the controller logic
 import vigem_output
+import visualiser
+
+# MediaPipe Solutions (Legacy)
+mp_hands = mp.solutions.hands
 
 # Get the absolute path of the directory containing this script
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -59,7 +63,7 @@ async def websocket_handler(websocket):
         print(f"Client disconnected: {websocket.remote_address}")
 
 async def broadcast(message_dict):
-    if not connected_clients:
+    if not WEBSOCKET_ENABLED or not connected_clients:
         return
     message_str = json.dumps(message_dict)
     # Broadcast to all connected clients
@@ -85,12 +89,13 @@ HAND_CONNECTIONS = [
 ]
 
 def draw_landmarks_on_image(rgb_image, detection_result):
-    hand_landmarks_list = detection_result.hand_landmarks
+    hand_landmarks_list = detection_result.multi_hand_landmarks if detection_result.multi_hand_landmarks else []
     annotated_image = np.copy(rgb_image)
     annotated_image = cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR)
 
     # Loop through the detected hands to visualize.
-    for hand_landmarks in hand_landmarks_list:
+    for hand_landmarks_proto in hand_landmarks_list:
+        hand_landmarks = hand_landmarks_proto.landmark
         # Draw the landmarks.
         for landmark in hand_landmarks:
              x = int(landmark.x * annotated_image.shape[1])
@@ -176,103 +181,196 @@ def detect_gesture(landmarks):
 # ----------------------------------------------------------------
 # Main Loop (Async)
 # ----------------------------------------------------------------
-async def main():
-    # Ensure model exists
-    model_path = os.path.join(SCRIPT_DIR, 'hand_landmarker.task')
-    if not os.path.exists(model_path):
-        print(f"Model '{model_path}' not found. Downloading...")
-        url = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
-        urllib.request.urlretrieve(url, model_path)
-        print("Download complete.")
-
-    # Initialize Hand Landmarker
-    base_options = python.BaseOptions(model_asset_path=model_path)
-    options = vision.HandLandmarkerOptions(base_options=base_options,
-                                           running_mode=vision.RunningMode.VIDEO,
-                                           num_hands=2)
+async def main(visualise_mode=False):
+    print("Initializing MediaPipe Hands (Legacy Mode)...")
     
-    detector = vision.HandLandmarker.create_from_options(options)
+    # Initialize Legacy Hand Landmarker with Lite Model (model_complexity=0)
+    # min_detection_confidence and min_tracking_confidence set to defaults or user pref
+    with mp_hands.Hands(
+        model_complexity=0, # 0=Lite, 1=Full
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5,
+        max_num_hands=2
+    ) as detector:
 
-    cap = cv2.VideoCapture(CAMERA_INDEX)
-    if not cap.isOpened():
-        print(f"Error: Could not open camera index {CAMERA_INDEX}.")
-        return
+        cap = cv2.VideoCapture(CAMERA_INDEX)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        if not cap.isOpened():
+            print(f"Error: Could not open camera index {CAMERA_INDEX}.")
+            return
 
-    # Start WebSocket Server
-    print("Starting WebSocket server on ws://localhost:8765...")
-    async with websockets.serve(websocket_handler, "localhost", 8765):
-        print("Camera running. Press 'q' to quit.")
-        
-        start_time = time.time() * 1000
+        # Initialize State Variables
+        calibration_start_time = time.time()
+        prev_frame_time = time.time()
+        previous_pinch_dists = [] # List to store previous pinch dist per hand
 
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                print("Failed to receive frame.")
-                break
+        # Start WebSocket Server
+        if WEBSOCKET_ENABLED:
+            print("Starting WebSocket server on ws://localhost:8765...")
+            server_cm = websockets.serve(websocket_handler, "localhost", 8765)
+        else:
+            print("WebSocket server disabled.")
+            server_cm = contextlib.nullcontext()
 
-            # Check logic for 'q' key
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
-
-            # 1. Flip and Convert
-            frame = cv2.flip(frame, 1) # Mirror
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-
-            # 2. Hand Tracking
-            timestamp_ms = int(time.time() * 1000 - start_time)
-            result = detector.detect_for_video(mp_image, timestamp_ms)
-
-            # 3. Draw and Check Gestures
-            annotated_image = draw_landmarks_on_image(rgb, result)
+        async with server_cm:
+            print("Camera running. Press 'q' to quit.")
             
-            if result.hand_landmarks:
-                for i, hand_landmarks in enumerate(result.hand_landmarks):
-                    # Get Handedness (Left or Right)
-                    # MediaPipe returns a list of classifications, we take the first one
-                    handedness = result.handedness[i][0].category_name
+            # Start time not needed for Legacy process() which is synchronous/static image
+            
+            while cap.isOpened():
+                ret, frame = cap.read()
+                if not ret:
+                    print("Failed to receive frame.")
+                    break
+
+                # Check logic for 'q' key
+                if visualise_mode and (cv2.waitKey(1) & 0xFF == ord('q')):
+                    break
+
+                # 1. Flip and Convert
+                frame = cv2.flip(frame, 1) # Mirror
+                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                
+                # 2. Hand Tracking (Legacy)
+                # To improve performance, optionally mark the image as not writeable to pass by reference.
+                rgb.flags.writeable = False
+                result = detector.process(rgb)
+                rgb.flags.writeable = True
+
+                # FPS Calculation
+                curr_frame_time_sec = time.time()
+                dt = curr_frame_time_sec - prev_frame_time
+                fps = 1.0 / dt if dt > 0 else 0
+                prev_frame_time = curr_frame_time_sec
+                
+                # Calibration Status (first 3 seconds)
+                calibration_elapsed = curr_frame_time_sec - calibration_start_time
+                is_calibrating = calibration_elapsed < 3.0
+                
+                calculated_values = {
+                    'fps': fps,
+                    'calibration_status': "calibrating" if is_calibrating else "calibrated",
+                    'calibration_time_remain': max(0, 3.0 - calibration_elapsed),
+                    'gestures': [],
+                    'handedness': [],
+                    'pinch_dists': [],
+                    'pinch_speeds': [],
+                    'wrist_coords': []
+                }
+                
+                if result.multi_hand_landmarks:
+                    # Ensure previous_pinch_dists is large enough
+                    while len(previous_pinch_dists) < len(result.multi_hand_landmarks):
+                        previous_pinch_dists.append(0.0)
                     
-                    # Detect Gesture (returns 'right', 'left', 'select', etc.)
-                    gesture = detect_gesture(hand_landmarks)
+                    # Truncate if fewer hands
+                    previous_pinch_dists = previous_pinch_dists[:len(result.multi_hand_landmarks)]
+
+                    for i, hand_landmarks_proto in enumerate(result.multi_hand_landmarks):
+                        # Convert protobuf landmarks to list for easier access if necessary, 
+                        # but your existing code uses property access .x .y which works on protobuf too.
+                        # However, structure is a bit different.
+                        # The 'hand_landmarks' in Tasks API was a list of NormalizedLandmark objects.
+                        # Here 'hand_landmarks_proto' is a NormalizedLandmarkList.
+                        # We can iterate it directly.
+                        hand_landmarks = hand_landmarks_proto.landmark
+
+                        # Get Handedness (Left or Right)
+                        # Legacy returns 'multi_handedness'.
+                        # Note: Legacy API output for 'Left' means it appears on left side? 
+                        # Actually 'Left' label usually corresponds to 'Left Hand'.
+                        # MediaPipe Hands classification is:
+                        # Label: "Left" means left hand.
+                        # But input image is mirrored?
+                        # Let's rely on the label MediaPipe gives.
+                        handedness_obj = result.multi_handedness[i]
+                        handedness = handedness_obj.classification[0].label
+                        
+                        # Detect Gesture (returns 'right', 'left', 'select', etc.)
+                        gesture = detect_gesture(hand_landmarks)
+                        
+                        # Map to ViGEm command labels
+                        vigem_label = "OPEN_PALM" # Default neutral state
+                        if gesture == "select": vigem_label = "PINCH"
+                        elif gesture == "fist": vigem_label = "CLOSED_FIST"
+                        elif gesture == "open": vigem_label = "OPEN_PALM"
+                        elif gesture == "point": vigem_label = "POINTING_UP"
+                        elif gesture == "victory": vigem_label = "VICTORY"
+                        elif gesture == "thumb_up": vigem_label = "THUMB_UP"
+                        elif gesture == "right": vigem_label = "SWIPE_RIGHT"
+                        elif gesture == "left": vigem_label = "SWIPE_LEFT"
+                        elif gesture == "forward": vigem_label = "SWIPE_UP"
+                        elif gesture == "back": vigem_label = "SWIPE_DOWN"
+
+                        # Get Wrist for X/Y Control
+                        wrist = hand_landmarks[0]
+                        # Normalize to -1.0 to 1.0
+                        # x: 0 (left) -> -1.0, 1 (right) -> 1.0
+                        norm_x = (wrist.x - 0.5) * 2
+                        # y: 0 (top) -> 1.0, 1 (bottom) -> -1.0 (Inverted for Joystick Up/Forward)
+                        norm_y = -(wrist.y - 0.5) * 2
+
+                        # Send to Virtual Controller with Handedness & Coords
+                        vigem_output.apply_gesture(vigem_label, handedness, norm_x, norm_y)
+
+                        if gesture:
+                            # Send to Web Client
+                            await broadcast({
+                                "x": norm_x,
+                                "y": norm_y,
+                                "gesture": gesture,
+                                "hand": handedness
+                            })
+                        
+                        # Store values for Visualizer
+                        calculated_values['gestures'].append(vigem_label)
+                        calculated_values['handedness'].append(handedness)
+                        calculated_values['wrist_coords'].append((norm_x, norm_y))
+                        
+                        # Calculate Pinch Distance & Speed
+                        thumb_tip = hand_landmarks[4]
+                        index_tip = hand_landmarks[8]
+                        pinch_dist = math.sqrt((index_tip.x - thumb_tip.x)**2 + (index_tip.y - thumb_tip.y)**2)
+                        
+                        prev_p = previous_pinch_dists[i]
+                        pinch_speed = abs(pinch_dist - prev_p)
+                        previous_pinch_dists[i] = pinch_dist
+                        
+                        calculated_values['pinch_dists'].append(pinch_dist)
+                        calculated_values['pinch_speeds'].append(pinch_speed)
+
+                else:
+                    # Release controller if no gesture is detected
+                    vigem_output.release_all()
+                    previous_pinch_dists = []
+
+                # 3. Draw Overlays
+                if visualise_mode:
+                    # The visualiser expects a list of hand landmarks lists
+                    # Adapting result.multi_hand_landmarks to expected format if needed
+                    # Tasks API format: list of lists of landmarks
+                    # Legacy: list of NormalizedLandmarkList
+                    # We need to extract .landmark list from each
+                    vis_landmarks = []
+                    if result.multi_hand_landmarks:
+                        for hl in result.multi_hand_landmarks:
+                            vis_landmarks.append(hl.landmark)
                     
-                    # Map to ViGEm command labels
-                    vigem_label = "OPEN_PALM" # Default neutral state
-                    if gesture == "select": vigem_label = "PINCH"
-                    elif gesture == "fist": vigem_label = "CLOSED_FIST"
-                    elif gesture == "open": vigem_label = "OPEN_PALM"
-                    elif gesture == "point": vigem_label = "POINTING_UP"
-                    elif gesture == "victory": vigem_label = "VICTORY"
-                    elif gesture == "thumb_up": vigem_label = "THUMB_UP"
-                    elif gesture == "right": vigem_label = "SWIPE_RIGHT"
-                    elif gesture == "left": vigem_label = "SWIPE_LEFT"
-                    elif gesture == "forward": vigem_label = "SWIPE_UP"
-                    elif gesture == "back": vigem_label = "SWIPE_DOWN"
+                    # Use new comprehensive visualizer
+                    annotated_image = visualiser.draw_overlay(frame, vis_landmarks, calculated_values)
+                    # Show the frame
+                    cv2.imshow("MediaPipe Gesture Controller", annotated_image)
 
-                    # Send to Virtual Controller with Handedness
-                    vigem_output.apply_gesture(vigem_label, handedness)
-
-                    if gesture:
-                        # Visual Feedback
-                        cv2.putText(annotated_image, f"{handedness}: {gesture.upper()}", (50, 50 + i*40), 
-                                   cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                        # Send to Web Client
-                        await broadcast({"gesture": gesture})
-            else:
-                # Release controller if no gesture is detected
-                vigem_output.release_all()
-
-            # Show the frame
-            cv2.imshow("MediaPipe Gesture Controller", annotated_image)
-
-            # Yield control to asyncio event loop (for websocket tasks)
-            await asyncio.sleep(0.001)
-
-    cap.release()
-    cv2.destroyAllWindows()
+                # Yield control to asyncio event loop (for websocket tasks)
+                await asyncio.sleep(0.001)
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="MediaPipe Gesture Controller")
+    parser.add_argument("--visualise", action="store_true", help="Enable rich visualisation overlay")
+    args = parser.parse_args()
+    
     try:
-        asyncio.run(main())
+        asyncio.run(main(visualise_mode=args.visualise))
     except KeyboardInterrupt:
         print("\nProgram stopped by user.")
