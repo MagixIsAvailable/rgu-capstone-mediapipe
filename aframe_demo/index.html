@@ -75,24 +75,44 @@
             tick: function (time, timeDelta) {
                 // 1. Poll Gamepad
                 const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
-                const gamepad = gamepads[0];
                 
-                // If no gamepad found, skip tick
-                if (!gamepad) return;
+                // FIX: Aggregate input from ALL connected controllers (Physical + Virtual)
+                let strafeInput = 0;
+                let forwardInput = 0;
+                let yawInput = 0;
+                let pitchInput = 0;
+                let gamepadFound = false;
+                
+                // Update instructions to show connected count if visible
+                if (this.overlay && !this.overlay.classList.contains('hidden')) {
+                   const count = Array.from(gamepads).filter(gp => gp).length;
+                   if (count > 0) this.overlay.textContent = count + " Controller(s) Connected - Fly Mode Ready";
+                }
 
                 const data = this.data;
-                const axes = gamepad.axes;
-
-                // 2. Dead Zone Helper
                 const applyDeadZone = (val) => {
                     return Math.abs(val) < data.deadZone ? 0 : val;
                 };
 
-                // Get axis values with deadzone applied
-                const strafeInput = applyDeadZone(axes[0]);   // Left Stick X
-                const forwardInput = applyDeadZone(axes[1]);  // Left Stick Y (Up is -1, Down is +1)
-                const yawInput = applyDeadZone(axes[2]);      // Right Stick X
-                const pitchInput = applyDeadZone(axes[3]);    // Right Stick Y
+                for (let i = 0; i < gamepads.length; i++) {
+                    const gp = gamepads[i];
+                    if (gp && gp.axes && gp.axes.length >= 4) {
+                        gamepadFound = true;
+                        strafeInput += applyDeadZone(gp.axes[0]);
+                        forwardInput += applyDeadZone(gp.axes[1]);
+                        yawInput += applyDeadZone(gp.axes[2]);
+                        pitchInput += applyDeadZone(gp.axes[3]);
+                    }
+                }
+                
+                // If no gamepad found, skip tick
+                if (!gamepadFound) return;
+                
+                // Clamp accumulated values to -1 to 1 range (in case dual input)
+                strafeInput = Math.max(-1, Math.min(1, strafeInput));
+                forwardInput = Math.max(-1, Math.min(1, forwardInput));
+                yawInput = Math.max(-1, Math.min(1, yawInput));
+                pitchInput = Math.max(-1, Math.min(1, pitchInput));
 
                 // 4. RIGHT STICK: Rotation (Yaw & Pitch)
                 if (yawInput !== 0 || pitchInput !== 0) {
