@@ -16,14 +16,18 @@ except ImportError:
 def load_gesture_map():
     global GESTURE_MAP
     try:
-        # Path relative to this script
-        map_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'gesture_map.json')
+        # Path relative to this script: goes up one level to root, then into config
+        root_dir = os.path.dirname(os.path.dirname(__file__))
+        map_path = os.path.join(root_dir, 'config', 'gesture_map.json')
+        
         with open(map_path, 'r') as f:
             GESTURE_MAP = json.load(f)
-        print(f"[ViGEm] Loaded gesture map from {map_path}")
+    except FileNotFoundError:
+        print("[ViGEm] Error: gesture_map.json not found.")
+    except json.JSONDecodeError:
+        print("[ViGEm] Error: gesture_map.json is not valid JSON.")
     except Exception as e:
-        print(f"[ViGEm] Warning: Could not load gesture_map.json: {e}")
-        GESTURE_MAP = {}
+        print(f"[ViGEm] Error loading gesture map: {e}")
 
 load_gesture_map()
 
