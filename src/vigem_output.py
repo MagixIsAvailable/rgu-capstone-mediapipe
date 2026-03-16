@@ -84,27 +84,26 @@ def apply_gesture(gesture_label: str, hand: str, wrist_x: float = 0.0, wrist_y: 
         labels = gesture_label if isinstance(gesture_label, list) else [gesture_label]
 
         for lbl in labels:
-            action = GESTURE_MAP.get(hand_side, {}).get(lbl)
-            if not action: continue
-
-            if action == "BUTTON_A":
+            if lbl == "BUTTON_1":
                 gp.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_A)
-            elif action == "BUTTON_Y":
-                gp.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_Y)
-            elif action == "BUTTON_B":
+            elif lbl == "BUTTON_2":
                 gp.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_B)
-            elif action == "BUTTON_X":
+            elif lbl == "BUTTON_3":
                 gp.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_X)
-            elif action == "SHOULDER_RIGHT":
-                gp.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_RIGHT_SHOULDER)
-            elif action == "SHOULDER_LEFT":
+            elif lbl == "BUTTON_4":
+                gp.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_Y)
+            elif lbl == "BUTTON_5":
                 gp.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_LEFT_SHOULDER)
-            elif action == "TRIGGER_RIGHT":
-                gp.right_trigger_float(value_float=1.0)
-            elif action == "TRIGGER_LEFT":
+            elif lbl == "BUTTON_6":
+                gp.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_RIGHT_SHOULDER)
+            elif lbl == "BUTTON_7":
+                gp.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_BACK)
+            elif lbl == "BUTTON_8":
+                gp.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_START)
+            elif lbl == "TRIGGER_LT":
                 gp.left_trigger_float(value_float=1.0)
-            elif action == "NONE":
-                pass
+            elif lbl == "TRIGGER_RT":
+                gp.right_trigger_float(value_float=1.0)
         
         gp.update()
     else:

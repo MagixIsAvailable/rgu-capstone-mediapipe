@@ -195,7 +195,28 @@ _LEFT_GESTURE_MAP = {
 
 def map_to_vigem(gesture_list: list[str], handedness: str) -> list[str]:
     if handedness == "Right":
-        return gesture_list
+        gests = set(gesture_list)
+        # Combo detection (priority)
+        if "index_bent" in gests and "middle_bent" in gests:
+            return ["BUTTON_7"]
+        if "index_bent" in gests and "ring_bent" in gests:
+            return ["BUTTON_8"]
+        
+        # Single mapping
+        mapping = {
+            "index_bent":   "BUTTON_1",
+            "middle_bent":  "BUTTON_2",
+            "ring_bent":    "BUTTON_3",
+            "pinky_bent":   "BUTTON_4",
+            "index_pinch":  "BUTTON_5",
+            "middle_pinch": "BUTTON_6",
+            "ring_pinch":   "TRIGGER_LT",
+            "pinky_pinch":  "TRIGGER_RT",
+            "OPEN_PALM":    "NEUTRAL"
+        }
+        res = [mapping[g] for g in gesture_list if g in mapping]
+        return res if res else ["NEUTRAL"]
+        
     return [_LEFT_GESTURE_MAP.get(g, "OPEN_PALM") for g in gesture_list]
 
 # ----------------------------------------------------------------
