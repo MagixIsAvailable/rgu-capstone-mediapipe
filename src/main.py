@@ -147,40 +147,24 @@ def detect_gesture(landmarks, handedness="Left") -> list[str]:
         if landmarks[20].y > landmarks[18].y: bends.append("pinky_bent")
         return bends if bends else ["OPEN_PALM"]
 
-    # Left hand — classic navigation logic
-    index_tip, index_pip = landmarks[8],  landmarks[6]
-    thumb_tip             = landmarks[4]
-    middle_tip, middle_pip = landmarks[12], landmarks[10]
-    ring_tip,   ring_pip   = landmarks[16], landmarks[14]
-    pinky_tip,  pinky_pip  = landmarks[20], landmarks[18]
-    wrist                  = landmarks[0]
-
-    if dist(index_tip, thumb_tip) < 0.05: return ["select"]
-    if wrist.x < 0.2: return ["right"]
-    if wrist.x > 0.8: return ["left"]
-    if wrist.y < 0.2: return ["forward"]
-    if wrist.y > 0.8: return ["back"]
-
-    fingers_open = sum([
-        index_tip.y  < index_pip.y,
-        middle_tip.y < middle_pip.y,
-        ring_tip.y   < ring_pip.y,
-        pinky_tip.y  < pinky_pip.y,
-    ])
-    thumb_is_up = thumb_tip.y < index_pip.y - 0.05
-
-    if fingers_open == 0:
-        return ["thumb_up"] if thumb_is_up else ["fist"]
-    if fingers_open == 1 and index_tip.y < index_pip.y:  return ["point"]
-    if fingers_open == 2 and index_tip.y < index_pip.y \
-                         and middle_tip.y < middle_pip.y: return ["victory"]
-    if fingers_open == 4: return ["open"]
-    return ["OPEN_PALM"]
+    # Left hand — modified for D-pad control (as requested)
+    # Layer: individual bends (combinable, identical logic to Right hand)
+    bends = []
+    if landmarks[8].y  > landmarks[6].y:  bends.append("left_index_bent")
+    if landmarks[12].y > landmarks[10].y: bends.append("left_middle_bent")
+    if landmarks[16].y > landmarks[14].y: bends.append("left_ring_bent")
+    if landmarks[20].y > landmarks[18].y: bends.append("left_pinky_bent")
+    
+    return bends if bends else ["OPEN_PALM"]
 
 # ----------------------------------------------------------------
 # Gesture → ViGEm label mapping
 # ----------------------------------------------------------------
 _LEFT_GESTURE_MAP = {
+    "left_index_bent":   "DPAD_UP",
+    "left_middle_bent":  "DPAD_DOWN",
+    "left_ring_bent":    "DPAD_LEFT",
+    "left_pinky_bent":   "DPAD_RIGHT",
     "select":  "PINCH",
     "fist":    "CLOSED_FIST",
     "open":    "OPEN_PALM",

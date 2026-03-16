@@ -1,5 +1,9 @@
 {
     "LEFT": {
+        "left_index_bent": "DPAD_UP",
+        "left_middle_bent": "DPAD_DOWN",
+        "left_ring_bent": "DPAD_LEFT",
+        "left_pinky_bent": "DPAD_RIGHT",
         "SWIPE_RIGHT": "JOYSTICK_RIGHT",
         "SWIPE_LEFT": "JOYSTICK_LEFT",
         "SWIPE_UP": "JOYSTICK_UP",

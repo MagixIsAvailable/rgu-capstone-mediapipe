@@ -47,14 +47,22 @@
 
 The system uses a split-hand control scheme optimized for navigation and interaction.
 
-### Left Hand (Navigation / Joystick)
-Controls the **Left Analog Stick** (WASD movement).
+### Left Hand (Navigation & D-Pad)
+Controls the **Left Analog Stick** and **D-Pad** simultaneously.
 
-- **Horizontal (X-Axis)**: Tilt your wrist Left/Right.
+#### Analog Stick (Movement)
+- **Horizontal (X-Axis)**: Tilt your wrist **Left/Right**.
 - **Vertical (Y-Axis)**: Uses **Inter-Hand Angle**.
   - **Move Forward**: Raise your Right Hand relative to your Left Hand.
   - **Move Backward**: Lower your Right Hand relative to your Left Hand.
   - *Fallback*: If only the Left Hand is visible, wrist tilt (Up/Down) is used.
+
+#### D-Pad (Directional Buttons)
+Finger bends trigger D-Pad inputs, independent of wrist movement.
+- **Index Finger Bent**: D-Pad Up
+- **Middle Finger Bent**: D-Pad Down
+- **Ring Finger Bent**: D-Pad Left
+- **Pinky Finger Bent**: D-Pad Right
 
 ### Right Hand (Action Buttons)
 Action mapping uses a **2-Layer Gesture System**:
