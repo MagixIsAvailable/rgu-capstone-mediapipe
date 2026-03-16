@@ -58,6 +58,22 @@ While developed on high-end hardware, the system is designed to scale.
    ```
    *The `--visualise` flag opens a debug window showing the camera feed and skeleton overlay.*
 
+## Usage Guide
+
+1. **Start the Controller**: Run the `main.py` script. You should see "VX360Gamepad initialized successfully" in the terminal.
+2. **Check Calibration**: Stand in front of the camera. The system will calibrate for 3 seconds (don't move during this time).
+3. **Open Your Game**: Leave the Python window running and launch any game that supports Xbox controllers (e.g., Rocket League, Fall Guys, or generic racing games).
+4. **Play**: Your hand movements now control the game directly!
+   - *Tip: Keep the debug window open on a second monitor to check your hand tracking status.*
+
+## Customization
+
+You can fine-tune the controller sensitivity by editing the `CONFIG` dictionary at the top of `src/main.py`:
+
+- `SENSITIVITY`: Increase this to make the virtual joystick more responsive (requires less hand movement).
+- `TILT_GAIN`: Adjusts how much wrist tilt is needed for full joystick deflection.
+- `NEUTRAL_Y_OFFSET`: Calibrate the "resting" vertical position of your hands if you find the character drifting forward/backward automatically.
+
 ## Controls & Gestures
 
 The system uses a split-hand control scheme optimized for navigation and interaction.
@@ -104,6 +120,12 @@ Action mapping uses a **2-Layer Gesture System**:
 - **Proximity Guard**: Prevents cursor jitter when hands are too close together.
 - **Input Emulation**: Mapped to a virtual Xbox 360 controller via ViGEmBus.
 - **WebSocket Server**: Broadcasts gesture events to the web frontend (optional).
+
+### Web Interface (Experimental)
+The project includes a 360° A-Frame web viewer (`web/index.html`). To use it:
+1. Set `WEBSOCKET_ENABLED = True` in `src/main.py`.
+2. Open `web/index.html` in your browser.
+3. The Python script will broadcast hand gestures to the web scene via WebSocket.
 
 ## Project Structure
 
