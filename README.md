@@ -61,6 +61,18 @@
 - **Input Emulation**: Mapped to a virtual Xbox 360 controller via ViGEmBus.
 - **WebSocket Server**: Broadcasts gesture events to the web frontend.
 
+## Project Structure
+
+```text
+rgu-capstone-mediapipe/
+├── config/              # Configuration files (gesture mappings)
+├── src/                 # Core source code (main pipeline)
+├── web/                 # 360° web viewer application
+├── archive/             # Historical files & prototypes (non-production)
+├── README.md            # You are here
+└── requirements.txt     # Python dependencies
+```
+
 ## Troubleshooting
 
 - **No Controller Detected**: Ensure you have installed the ViGEmBus driver and that you hear the Windows USB connection sound when the script starts.
