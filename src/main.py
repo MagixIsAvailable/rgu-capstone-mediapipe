@@ -18,6 +18,8 @@ import math
 import contextlib
 
 WEBSOCKET_ENABLED = False
+# Interaction Box Sensitivity (Higher = less movement required)
+SENSITIVITY = 2.0
 
 # Import the controller logic
 import vigem_output
@@ -92,6 +94,15 @@ def draw_landmarks_on_image(rgb_image, detection_result):
     hand_landmarks_list = detection_result.multi_hand_landmarks if detection_result.multi_hand_landmarks else []
     annotated_image = np.copy(rgb_image)
     annotated_image = cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR)
+    
+    # Draw Interaction Box
+    h, w, c = annotated_image.shape
+    box_half_size = (1.0 / SENSITIVITY) / 2
+    x1 = int((0.5 - box_half_size) * w)
+    y1 = int((0.5 - box_half_size) * h)
+    x2 = int((0.5 + box_half_size) * w)
+    y2 = int((0.5 + box_half_size) * h)
+    cv2.rectangle(annotated_image, (x1, y1), (x2, y2), (0, 255, 255), 2)
 
     # Loop through the detected hands to visualize.
     for hand_landmarks_proto in hand_landmarks_list:
@@ -115,6 +126,20 @@ def draw_landmarks_on_image(rgb_image, detection_result):
             end_y = int(end_point.y * annotated_image.shape[0])
             
             cv2.line(annotated_image, (start_x, start_y), (end_x, end_y), (0, 255, 0), 2)
+        
+        # --- NEW: Draw Virtual Joystick Line (Wrist -> Middle MCP) ---
+        wrist = hand_landmarks[0]
+        middle_mcp = hand_landmarks[9] # Index 9
+        
+        w_x = int(wrist.x * annotated_image.shape[1])
+        w_y = int(wrist.y * annotated_image.shape[0])
+        m_x = int(middle_mcp.x * annotated_image.shape[1])
+        m_y = int(middle_mcp.y * annotated_image.shape[0])
+        
+        # Draw line in Cyan
+        cv2.line(annotated_image, (w_x, w_y), (m_x, m_y), (255, 255, 0), 3)
+        # Draw arrow head
+        cv2.arrowedLine(annotated_image, (w_x, w_y), (m_x, m_y), (255, 255, 0), 3, tipLength=0.3)
             
     return annotated_image
 
@@ -305,11 +330,34 @@ async def main(visualise_mode=False):
 
                         # Get Wrist for X/Y Control
                         wrist = hand_landmarks[0]
-                        # Normalize to -1.0 to 1.0
-                        # x: 0 (left) -> -1.0, 1 (right) -> 1.0
-                        norm_x = (wrist.x - 0.5) * 2
-                        # y: 0 (top) -> 1.0, 1 (bottom) -> -1.0 (Inverted for Joystick Up/Forward)
-                        norm_y = -(wrist.y - 0.5) * 2
+                        
+                        # --- NEW CONTROL LOGIC ---
+                        # Joystick X: Based on Hand Tilt (Wrist Angle)
+                        # Allows "flicking" the wrist left/right without moving the arm.
+                        middle_mcp = hand_landmarks[9] # Middle Finger Knuckle
+                        
+                        # Calculate Hand Size (Distance Wrist -> Middle MCP) for normalization
+                        hand_size = math.sqrt((middle_mcp.x - wrist.x)**2 + (middle_mcp.y - wrist.y)**2)
+                        
+                        # Calculate Tilt X (Sine of the angle)
+                        # (middle_mcp.x - wrist.x) gives the horizontal offset.
+                        # Dividing by hand_size normalizes it (removes effect of camera distance).
+                        tilt_x = (middle_mcp.x - wrist.x) / (hand_size + 1e-6) # Avoid div/0
+                        
+                        # Sensitivity for Tilt: 
+                        # 4.0 means ~15 degrees tilt gives full stick input (sin(15) ~= 0.25, 0.25*4 = 1.0)
+                        TILT_GAIN = 4.0
+                        norm_x = tilt_x * TILT_GAIN
+
+                        # Joystick Y: Keep Position-based (Interaction Box)
+                        # We still use the "Interaction Box" sensitivity for Y (Up/Down) movements.
+                        # SENSITIVITY from global (e.g. 2.0)
+                        raw_y = -(wrist.y - 0.5) * 2 * SENSITIVITY
+                        norm_y = raw_y
+
+                        # Clamp values to valid Joystick Range [-1.0, 1.0]
+                        norm_x = max(-1.0, min(1.0, norm_x))
+                        norm_y = max(-1.0, min(1.0, norm_y))
 
                         # Send to Virtual Controller with Handedness & Coords
                         vigem_output.apply_gesture(vigem_label, handedness, norm_x, norm_y)
