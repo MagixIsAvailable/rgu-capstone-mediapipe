@@ -8,6 +8,14 @@
         "CLOSED_FIST": "JOYSTICK_FORWARD_HALF"
     },
     "RIGHT": {
+        "index_pinch": "SHOULDER_RIGHT",
+        "middle_pinch": "SHOULDER_LEFT",
+        "ring_pinch": "TRIGGER_RIGHT",
+        "pinky_pinch": "TRIGGER_LEFT",
+        "index_bent": "BUTTON_A",
+        "middle_bent": "BUTTON_B",
+        "ring_bent": "BUTTON_X",
+        "pinky_bent": "BUTTON_Y",
         "PINCH": "BUTTON_A",
         "THUMB_UP": "BUTTON_Y",
         "THUMB_DOWN": "BUTTON_B",

@@ -62,13 +62,8 @@ def apply_gesture(gesture_label: str, hand: str, wrist_x: float = 0.0, wrist_y: 
     if not gp:
         return
 
-    label = gesture_label.upper() if gesture_label else ""
     hand_side = hand.upper() if hand else ""
     
-    # Mapping Logic
-    # Try to get action from map, default to None
-    action = GESTURE_MAP.get(hand_side, {}).get(label)
-
     if hand_side == "LEFT":
         # Continuous Joystick Control with Deadzone
         if abs(wrist_x) < 0.15 and abs(wrist_y) < 0.15:
@@ -81,23 +76,37 @@ def apply_gesture(gesture_label: str, hand: str, wrist_x: float = 0.0, wrist_y: 
     elif hand_side == "RIGHT":
         # Clear previous buttons for this hand
         gp.report.wButtons = 0
+        # Reset triggers
+        gp.right_trigger_float(value_float=0.0)
+        gp.left_trigger_float(value_float=0.0)
+
+        # Handle list of gestures or single string
+        labels = gesture_label if isinstance(gesture_label, list) else [gesture_label]
+
+        for lbl in labels:
+            action = GESTURE_MAP.get(hand_side, {}).get(lbl)
+            if not action: continue
+
+            if action == "BUTTON_A":
+                gp.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_A)
+            elif action == "BUTTON_Y":
+                gp.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_Y)
+            elif action == "BUTTON_B":
+                gp.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_B)
+            elif action == "BUTTON_X":
+                gp.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_X)
+            elif action == "SHOULDER_RIGHT":
+                gp.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_RIGHT_SHOULDER)
+            elif action == "SHOULDER_LEFT":
+                gp.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_LEFT_SHOULDER)
+            elif action == "TRIGGER_RIGHT":
+                gp.right_trigger_float(value_float=1.0)
+            elif action == "TRIGGER_LEFT":
+                gp.left_trigger_float(value_float=1.0)
+            elif action == "NONE":
+                pass
         
-        if action == "BUTTON_A":
-            gp.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_A)
-        elif action == "BUTTON_Y":
-            gp.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_Y)
-        elif action == "BUTTON_B":
-            gp.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_B)
-        elif action == "BUTTON_X":
-            gp.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_X)
-        elif action == "SHOULDER_RIGHT":
-            gp.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_RIGHT_SHOULDER)
-        elif action == "NONE":
-            # Buttons already cleared above
-            pass
-        else:
-            release_all()
-            return
+        gp.update()
     else:
         release_all()
         return
