@@ -243,6 +243,11 @@ async def main(visualise_mode=False):
             
             # Start time not needed for Legacy process() which is synchronous/static image
             
+            # Initialise EMA variables
+            EMA_ALPHA = 0.3
+            prev_norm_x = 0.0
+            prev_norm_y = 0.0
+            
             while cap.isOpened():
                 ret, frame = cap.read()
                 if not ret:
@@ -349,11 +354,18 @@ async def main(visualise_mode=False):
                         TILT_GAIN = 4.0
                         norm_x = tilt_x * TILT_GAIN
 
-                        # Joystick Y: Keep Position-based (Interaction Box)
-                        # We still use the "Interaction Box" sensitivity for Y (Up/Down) movements.
-                        # SENSITIVITY from global (e.g. 2.0)
-                        raw_y = -(wrist.y - 0.5) * 2 * SENSITIVITY
-                        norm_y = raw_y
+                        # Joystick Y: Now also Tilt-Based (Pitch)
+                        # Eliminates the need to move hand up/down the screen.
+                        NEUTRAL_Y_OFFSET = 0.65  # tune after testing — read tilt_y at rest from visualiser
+                        
+                        tilt_y_raw = (wrist.y - middle_mcp.y) / (hand_size + 1e-6)
+                        norm_y = -(tilt_y_raw - NEUTRAL_Y_OFFSET) * TILT_GAIN
+
+                        # EMA Smoothing
+                        norm_x = EMA_ALPHA * norm_x + (1 - EMA_ALPHA) * prev_norm_x
+                        norm_y = EMA_ALPHA * norm_y + (1 - EMA_ALPHA) * prev_norm_y
+                        prev_norm_x = norm_x
+                        prev_norm_y = norm_y
 
                         # Clamp values to valid Joystick Range [-1.0, 1.0]
                         norm_x = max(-1.0, min(1.0, norm_x))
