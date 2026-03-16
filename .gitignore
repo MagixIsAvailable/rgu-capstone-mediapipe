@@ -207,3 +207,21 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+```text
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Configuration (Machine specific)
+camera_config.txt
+src/camera_config.txt
+
+# OS Files
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log
