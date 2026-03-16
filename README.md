@@ -8,6 +8,21 @@
 - **Python**: 3.10 or 3.11 (Restricted by MediaPipe Legacy API)
 - **Driver**: [ViGEmBus Driver](https://github.com/nefarius/ViGEmBus/releases) (Must be installed manually)
 
+## Hardware
+
+### Developed & Tested On
+- **CPU**: AMD Ryzen 9 5950X
+- **GPU**: NVIDIA RTX 3090
+- **RAM**: 64GB DDR4
+- **Camera**: Tested with Insta360 GO 3S (webcam mode) and older Creative webcams.
+- **Controller Reference**: Mappings verified against a Razer Wolverine V2 using `joy.cpl`.
+
+### Recommendations
+While developed on high-end hardware, the system is designed to scale.
+- **Webcam**: Any functional USB webcam (720p+ recommended for best tracking).
+- **CPU**: Modern multi-core processor (MediaPipe relies heavily on CPU).
+- **Lighting**: Adequate lighting is crucial for stable hand tracking.
+
 ## Installation
 
 1. **Install ViGEmBus Driver**
