@@ -1,47 +1,72 @@
-﻿# VisionInput — MediaPipe gesture-based Xbox controller wrapper
+# VisionInput - 360° Room Gesture Controller
 
-**VisionInput** is a plug-and-play gesture controller that replaces standard PC game controller input in an immersive 360° room environment using real-time hand gesture detection.
+**VisionInput** is a plug-and-play gesture controller designed for immersive projection environments. It replaces standard PC game controller input using real-time MediaPipe hand tracking and broadcasts interaction data via WebSockets for 360° visualization.
 
-## Prerequisites
-- **OS**: Windows 10 or Windows 11
-- **Python**: Version 3.10 or higher
-- **Driver**: ViGEmBus driver installed (Required for virtual controller emulation)
+## System Requirements
+
+- **OS**: Windows 10 or Windows 11 (Required for ViGEmBus)
+- **Python**: 3.10 or 3.11 (Restricted by MediaPipe Legacy API)
+- **Driver**: [ViGEmBus Driver](https://github.com/nefarius/ViGEmBus/releases) (Must be installed manually)
 
 ## Installation
 
 1. **Install ViGEmBus Driver**
-   - Download and install the latest release from:  
-     [https://github.com/nefarius/ViGEmBus/releases](https://github.com/nefarius/ViGEmBus/releases)
+   - Download the latest installer from the link above and run it.
 
 2. **Clone the Repository**
-   ```bash
+   ```powershell
    git clone https://github.com/MagixIsAvailable/rgu-capstone-mediapipe.git
    cd rgu-capstone-mediapipe
    ```
 
 3. **Install Dependencies**
-   ```bash
+   It is recommended to use a virtual environment.
+   ```powershell
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1
    pip install -r requirements.txt
    ```
 
+## Configuration
+
+1. **Camera Setup**
+   Run the interactive camera selector to identify your webcam index:
+   ```powershell
+   python src/setup_camera.py
+   ```
+   Follow the on-screen prompts (Press 'y' to select, 'n' to skip) to save your configuration.
+
+2. **Gesture Mapping**
+   Customize controller bindings by editing `config/gesture_map.json`.
+
 ## Usage
 
-1. Connect your webcam.
-2. Run the wrapper script:
-   ```bash
-   python gesture_wrapper.py
+1. **Start the Controller Logic**
+   Launch the main backend script:
+   ```powershell
+   python src/main.py
    ```
-3. The script will:
-   - Download the necessary MediaPipe model (`hand_landmarker.task`) automatically on first run.
-   - Start a camera feed window visualizing detected gestures.
-   - Create a virtual Xbox 360 controller labeled "VisionInput".
+   *Optional: Add `--visualise` to see the debug camera overlay.*
+   ```powershell
+   python src/main.py --visualise
+   ```
 
-## Configuration
-- **Camera Selection**: To change the camera index (default is 0), create or edit `src/camera_config.txt` inside the `src/` folder with the index number (e.g., `1`).
-- **Gesture Mapping**: Edit `gesture_map.json` in the root directory to customize controller bindings.
+2. **Launch the 360° Viewer**
+   Open `web/index.html` in your web browser. This interface connects to the backend via WebSocket (port 8765) to receive gesture events in real-time.
 
-## Project Structure
-- `gesture_wrapper.py`: Main entry point.
-- `src/`: Core logic and helper scripts.
-- `gesture_map.json`: Gesture-to-controller mapping configuration.
-- `requirements.txt`: Python package dependencies.
+## Feature Overview
+
+- **Hand Tracking**: Uses MediaPipe to detect hand landmarks.
+- **Gesture Recognition**: Supports Pinch, Swipe (Left/Right/Up/Down), Point, Fist, and Open Palm.
+- **Input Emulation**: Mapped to a virtual Xbox 360 controller via ViGEmBus.
+- **WebSocket Server**: Broadcasts gesture events to the web frontend.
+
+## Troubleshooting
+
+- **No Controller Detected**: Ensure you have installed the ViGEmBus driver and that you hear the Windows USB connection sound when the script starts.
+- **WebSocket Error**: Ensure the browser and the Python script are running on the same machine (localhost). Port 8765 must be free.
+- **Camera Index Error**: If the camera fails to open, run `src/setup_camera.py` again to re-select a valid camera.
+
+## License
+
+This project is licensed under the MIT License.

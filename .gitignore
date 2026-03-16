@@ -225,3 +225,11 @@ Desktop.ini
 
 # Logs
 *.log
+
+# Local configuration
+src/camera_config.txt
+camera_config.txt
+
+# Generated files
+src/__pycache__/
+src/*.pyc
