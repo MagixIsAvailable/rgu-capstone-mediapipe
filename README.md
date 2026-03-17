@@ -76,7 +76,7 @@ VisionInput is designed to run on standard hardware.
 
 VisionInput uses a split-hand control scheme. Both hands must be visible for full control.
 
-*[Photo: both hands in gesture position in front of camera](imgs/overlay_Mediapipe.png)*
+*![Photo: both hands in gesture position in front of camera](imgs/overlay_Mediapipe.png)*
 
 ### Left Hand — Navigation & D-Pad
 
