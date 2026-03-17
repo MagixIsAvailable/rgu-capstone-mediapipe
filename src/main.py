@@ -2,9 +2,17 @@ import cv2
 import sys
 import time
 import argparse
+import logging
 from unittest.mock import MagicMock
 import numpy as np
 import os
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%H:%M:%S'
+)
 
 sys.modules['sounddevice'] = MagicMock()
 
@@ -49,16 +57,16 @@ try:
         content = f.read().strip()
         CAMERA_INDEX = int(content) if content else 0
         if not content:
-            print("camera_config.txt is empty. Using default index 0.")
-    print(f"Loading Camera Index {CAMERA_INDEX} from {config_path}...")
+            logging.warning("camera_config.txt is empty. Using default index 0.")
+    logging.info(f"Loading Camera Index {CAMERA_INDEX} from {config_path}...")
 except FileNotFoundError:
-    print("Error: 'camera_config.txt' not found.")
-    print("Please run 'python src/setup_camera.py' first to select your camera.")
+    logging.error("Error: 'camera_config.txt' not found.")
+    logging.error("Please run 'python src/setup_camera.py' first to select your camera.")
     input("Press Enter to exit...")
     sys.exit()
 except ValueError:
-    print("Error: Invalid camera index in camera_config.txt. Using default 0.")
-    CAMERA_INDEX = 3
+    logging.error("Invalid camera index in camera_config.txt. Using default 0.")
+    CAMERA_INDEX = 0
 
 # ----------------------------------------------------------------
 # WebSocket
@@ -66,13 +74,18 @@ except ValueError:
 connected_clients = set()
 
 async def websocket_handler(websocket):
-    print(f"New client connected: {websocket.remote_address}")
+    if len(connected_clients) >= 5:
+        logging.warning(f"Rejected connection from {websocket.remote_address}: too many clients")
+        await websocket.close()
+        return
+
+    logging.info(f"New client connected: {websocket.remote_address}")
     connected_clients.add(websocket)
     try:
         await websocket.wait_closed()
     finally:
         connected_clients.discard(websocket)
-        print(f"Client disconnected: {websocket.remote_address}")
+        logging.info(f"Client disconnected: {websocket.remote_address}")
 
 async def broadcast(message_dict):
     if not WEBSOCKET_ENABLED or not connected_clients:
@@ -207,7 +220,7 @@ def map_to_vigem(gesture_list: list[str], handedness: str) -> list[str]:
 # Main loop (async)
 # ----------------------------------------------------------------
 async def main(visualise_mode=False):
-    print("Initializing MediaPipe Hands (Legacy Mode)...")
+    logging.info("Initializing MediaPipe Hands (Legacy Mode)...")
     with mp_hands.Hands(
         model_complexity=0,
         min_detection_confidence=0.5,
@@ -218,9 +231,9 @@ async def main(visualise_mode=False):
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         if not cap.isOpened():
-            print("Run 'python src/setup_camera.py' to fix this.")
+            logging.error("Run 'python src/setup_camera.py' to fix this.")
             input("Press Enter to exit...")
-            print(f"Error: Could not open camera index {CAMERA_INDEX}.")
+            logging.error(f"Could not open camera index {CAMERA_INDEX}.")
             return
 
         calibration_start = time.time()
@@ -237,13 +250,13 @@ async def main(visualise_mode=False):
 
         async with server_cm:
             if WEBSOCKET_ENABLED:
-                print("WebSocket server running on ws://localhost:8765")
-            print("Camera running. Press 'q' to quit.")
+                logging.info("WebSocket server running on ws://localhost:8765")
+            logging.info("Camera running. Press 'q' to quit.")
 
             while cap.isOpened():
                 ret, frame = cap.read()
                 if not ret:
-                    print("Failed to receive frame.")
+                    logging.error("Failed to receive frame.")
                     break
                 if visualise_mode and (cv2.waitKey(1) & 0xFF == ord('q')):
                     break
@@ -362,4 +375,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main(visualise_mode=args.visualise))
     except KeyboardInterrupt:
-        print("\nProgram stopped by user.")
+        logging.info("Program stopped by user.")
