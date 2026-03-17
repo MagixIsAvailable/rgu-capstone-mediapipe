@@ -61,6 +61,8 @@ VisionInput is designed to run on standard hardware.
 ```
    Press `y` to select a camera when the preview looks correct.
 
+   *![Photo: camera option](imgs/setup_camera.png)*
+
 2. **Launch the controller**
 ```powershell
    python src/main.py
