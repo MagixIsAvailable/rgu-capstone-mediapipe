@@ -1,154 +1,185 @@
-# VisionInput - 360° Room Gesture Controller
+# VisionInput — Gesture Controller for Immersive Projection Environments
 
-**VisionInput** is a plug-and-play gesture controller designed for immersive projection environments. It leverages MediaPipe hand tracking to emulate an Xbox 360 controller, allowing you to control PC games and applications using natural hand movements.
+**VisionInput** is a plug-and-play gesture controller built for the James Hutton Institute's 360° immersive projection room in Aberdeen. It uses Google MediaPipe hand tracking to emulate an Xbox 360 controller, replacing physical input devices with natural hand gestures for navigating immersive content and applications.
+
+Developed as an RGU Honours capstone project (CM4134), supervised by Dr John N.A. Brown.
+
+---
 
 ## System Requirements
 
-- **OS**: Windows 10 or Windows 11 (Required for ViGEmBus)
-- **Python**: 3.10 or 3.11 (Restricted by MediaPipe Legacy API)
-- **Driver**: [ViGEmBus Driver](https://github.com/nefarius/ViGEmBus/releases) (Must be installed manually)
+- **OS**: Windows 10 or Windows 11 (required for ViGEmBus)
+- **Python**: 3.11 (required — MediaPipe Legacy API is not supported on 3.12+)
+- **Driver**: [ViGEmBus Driver](https://github.com/nefarius/ViGEmBus/releases) — must be installed manually before running
+
+---
 
 ## Hardware
 
 ### Developed & Tested On
 - **CPU**: AMD Ryzen 9 5950X
 - **GPU**: NVIDIA RTX 3090
-- **RAM**: 64GB DDR4
-- **Camera**: Tested with Insta360 GO 3S (webcam mode) and older Creative webcams.
-- **Controller Reference**: Mappings verified against a Razer Wolverine V2 using `joy.cpl`.
+- **Camera**: Insta360 GO 3S (webcam mode) and Creative VF0700 webcam
+- **Controller Reference**: Mappings verified against Razer Wolverine V2 using `joy.cpl`
 
-### Recommendations
-While developed on high-end hardware, the system is designed to scale.
-- **Webcam**: Any functional USB webcam (720p+ recommended for best tracking).
-- **CPU**: Modern multi-core processor (MediaPipe relies heavily on CPU).
-- **Lighting**: Adequate lighting is crucial for stable hand tracking.
+*[Photo: camera mounted on tripod, hands in frame]*
+
+### Minimum Recommendations
+VisionInput is designed to run on standard hardware.
+- **Webcam**: Any USB webcam (720p or higher recommended)
+- **CPU**: Any modern multi-core processor — MediaPipe runs on CPU
+- **Lighting**: Consistent, adequate lighting is essential for stable hand tracking. Avoid backlighting.
+
+---
 
 ## Installation
 
 1. **Install ViGEmBus Driver**
-   - Download the latest installer from the link above and run it.
+   Download and run the latest installer from the link above. You should hear the Windows USB connection sound when the script starts successfully.
 
 2. **Clone the Repository**
-   ```powershell
+```powershell
    git clone https://github.com/MagixIsAvailable/rgu-capstone-mediapipe.git
    cd rgu-capstone-mediapipe
-   ```
+```
 
-3. **Install Dependencies**
-   It is recommended to use a virtual environment.
-   ```powershell
-   python -m venv .venv
+3. **Create a virtual environment and install dependencies**
+```powershell
+   py -3.11 -m venv .venv
    .\.venv\Scripts\Activate.ps1
    pip install -r requirements.txt
-   ```
+```
+
+---
 
 ## Configuration
 
-1. **Camera Setup**
-   Run the interactive camera selector to identify your webcam index:
-   ```powershell
+1. **Select your camera**
+   Run the interactive camera selector to find and save your webcam index:
+```powershell
    python src/setup_camera.py
-   ```
-   Follow the on-screen prompts (Press 'y' to select, 'n' to skip) to save your configuration.
+```
+   Press `y` to select a camera when the preview looks correct.
 
-2. **Run the Controller**
-   Launch the main backend script:
-   ```powershell
+2. **Launch the controller**
+```powershell
+   python src/main.py
+```
+   Add `--visualise` to open a debug window showing the camera feed, hand skeleton, and live joystick values:
+```powershell
    python src/main.py --visualise
-   ```
-   *The `--visualise` flag opens a debug window showing the camera feed and skeleton overlay.*
+```
 
-## Usage Guide
-
-1. **Start the Controller**: Run the `main.py` script. You should see "VX360Gamepad initialized successfully" in the terminal.
-2. **Check Calibration**: Stand in front of the camera. The system will calibrate for 3 seconds (don't move during this time).
-3. **Open Your Game**: Leave the Python window running and launch any game that supports Xbox controllers (e.g., Rocket League, Fall Guys, or generic racing games).
-4. **Play**: Your hand movements now control the game directly!
-   - *Tip: Keep the debug window open on a second monitor to check your hand tracking status.*
-
-## Customization
-
-You can fine-tune the controller sensitivity by editing the `CONFIG` dictionary at the top of `src/main.py`:
-
-- `SENSITIVITY`: Increase this to make the virtual joystick more responsive (requires less hand movement).
-- `TILT_GAIN`: Adjusts how much wrist tilt is needed for full joystick deflection.
-- `NEUTRAL_Y_OFFSET`: Calibrate the "resting" vertical position of your hands if you find the character drifting forward/backward automatically.
+---
 
 ## Controls & Gestures
 
-The system uses a split-hand control scheme optimized for navigation and interaction.
+VisionInput uses a split-hand control scheme. Both hands must be visible for full control.
 
-### Left Hand (Navigation & D-Pad)
+*[Photo: both hands in gesture position in front of camera]*
+
+### Left Hand — Navigation & D-Pad
+
 Controls the **Left Analog Stick** and **D-Pad** simultaneously.
 
-#### Analog Stick (Movement)
-- **Horizontal (X-Axis)**: Tilt your wrist **Left/Right**.
-- **Vertical (Y-Axis)**: Uses **Inter-Hand Angle**.
-  - **Move Forward**: Raise your Right Hand relative to your Left Hand.
-  - **Move Backward**: Lower your Right Hand relative to your Left Hand.
-  - *Fallback*: If only the Left Hand is visible, wrist tilt (Up/Down) is used.
+**Analog Stick (Movement)**
+| Axis | Input | Action |
+|:---|:---|:---|
+| Horizontal (X) | Tilt wrist left / right | Strafe or turn |
+| Vertical (Y) | Raise right hand relative to left | Move forward |
+| Vertical (Y) | Lower right hand relative to left | Move backward |
+| Vertical (Y) fallback | Tilt wrist up / down (single hand) | Move forward / backward |
 
-#### D-Pad (Directional Buttons)
-Finger bends trigger D-Pad inputs, independent of wrist movement.
-- **Index Finger Bent**: D-Pad Up
-- **Middle Finger Bent**: D-Pad Down
-- **Ring Finger Bent**: D-Pad Left
-- **Pinky Finger Bent**: D-Pad Right
+**D-Pad — bend each finger independently**
+| Gesture | D-Pad Output |
+|:---|:---|
+| Index finger bent | Up |
+| Middle finger bent | Down |
+| Ring finger bent | Left |
+| Pinky finger bent | Right |
 
-### Right Hand (Action Buttons)
-Action mapping uses a **2-Layer Gesture System**:
+---
 
-| Gesture | Controller Input | Function |
-| :--- | :--- | :--- |
-| **Index Pinch** | **LB** | Left Bumper |
-| **Middle Pinch** | **RB** | Right Bumper |
-| **Ring Pinch** | **LT** | Left Trigger |
-| **Pinky Pinch** | **RT** | Right Trigger |
-| **Index Finger Bent** | **A** | Button 1 (Select) |
-| **Middle Finger Bent** | **B** | Button 2 (Back/Cancel) |
-| **Ring Finger Bent** | **X** | Button 3 (Interact) |
-| **Pinky Finger Bent** | **Y** | Button 4 (Menu) |
-| **Index + Middle Bent** | **Back** | Button 7 (View) |
-| **Index + Ring Bent** | **Start** | Button 8 (Menu) |
-| **Open Palm** | **Neutral** | No Input |
+### Right Hand — Action Buttons
 
-## Feature Overview
+Two-layer gesture system. **Pinches take priority over bends.**
 
-- **Hand Tracking**: Uses MediaPipe to detect hand landmarks in real-time.
-- **2-Layer Gesture System**: Distinguishes between "Bends" (face buttons) and "Pinches" (shoulders/triggers) for versatile input.
-- **Inter-Hand Physics**: Calculates relative angles between hands for smooth, ergonomic joystick control (solving the "gorilla arm" fatigue issue).
-- **Proximity Guard**: Prevents cursor jitter when hands are too close together.
-- **Input Emulation**: Mapped to a virtual Xbox 360 controller via ViGEmBus.
-- **WebSocket Server**: Broadcasts gesture events to the web frontend (optional).
+*[Photo: Windows Game Controllers test panel showing buttons lit]*
+
+| Gesture | Controller Input |
+|:---|:---|
+| Index pinch | LB (Left Bumper) |
+| Middle pinch | RB (Right Bumper) |
+| Ring pinch | LT (Left Trigger) |
+| Pinky pinch | RT (Right Trigger) |
+| Index bent | A |
+| Middle bent | B |
+| Ring bent | X |
+| Pinky bent | Y |
+| Index + Middle bent | Back / View |
+| Index + Ring bent | Start / Menu |
+| Open palm | No input (neutral) |
+
+---
+
+## Tuning & Customisation
+
+Edit the `CONFIG` dictionary at the top of `src/main.py` to adjust behaviour:
+
+| Parameter | Effect |
+|:---|:---|
+| `TILT_GAIN` | How much wrist tilt produces full joystick deflection. Increase for less movement required. |
+| `NEUTRAL_Y_OFFSET` | Vertical bias correction for single-hand Y-axis fallback. Tune if character drifts forward/backward when only one hand is visible. |
+| `EMA_ALPHA` | Smoothing factor (0.0–1.0). Lower = smoother but slower response. Default 0.3. |
+
+---
+
+## Features
+
+- **MediaPipe hand tracking** — real-time 21-landmark hand detection, runs locally with no cloud dependency
+- **Two-layer gesture system** — pinches (triggers/bumpers) and bends (face buttons) as distinct input layers
+- **Inter-hand angle control** — Y-axis driven by relative hand height, solving the Gorilla Arm fatigue problem inherent in position-based gesture systems
+- **EMA smoothing** — per-hand exponential moving average reduces joystick jitter without adding perceptible lag
+- **Dead zone** — suppresses accidental input when hands are near neutral position
+- **WebSocket server** — optional gesture broadcast to browser-based frontends (disabled by default)
+- **Debug overlay** — `--visualise` flag shows skeleton, joystick vector, and live values for tuning
 
 ### Web Interface (Experimental)
-The project includes a 360° A-Frame web viewer (`web/index.html`). To use it:
-1. Set `WEBSOCKET_ENABLED = True` in `src/main.py`.
-2. Open `web/index.html` in your browser.
-3. The Python script will broadcast hand gestures to the web scene via WebSocket.
+A 360° A-Frame viewer is included in `web/index.html`. To enable:
+1. Set `WEBSOCKET_ENABLED = True` in `src/main.py`
+2. Open `web/index.html` in a browser on the same machine
+
+---
 
 ## Project Structure
-
 ```text
 rgu-capstone-mediapipe/
-├── config/              # Configuration files (gesture mappings)
-├── src/                 # Core source code (main pipeline)
-│   ├── main.py          # Entry point & gesture logic
-│   ├── vigem_output.py  # Virtual controller driver
+├── config/              # Gesture mapping configuration
+├── src/
+│   ├── main.py          # Entry point, gesture logic, control pipeline
+│   ├── vigem_output.py  # Virtual Xbox controller output layer
 │   ├── setup_camera.py  # Camera selection utility
-│   └── visualiser.py    # Debug overlay drawing
-├── web/                 # 360° web viewer application (A-Frame)
-├── archive/             # Historical files & prototypes
-├── README.md            # Project documentation
-└── requirements.txt     # Python dependencies
+│   └── visualiser.py    # Debug overlay
+├── web/                 # Experimental A-Frame 360° viewer
+├── archive/             # Development history and prototypes
+├── README.md
+└── requirements.txt
 ```
+
+---
 
 ## Troubleshooting
 
-- **No Controller Detected**: Ensure you have installed the ViGEmBus driver. You should hear the Windows USB connection sound when the script starts.
-- **Window Closes Immediately**: If `camera_config.txt` is invalid, the script will pause and ask you to run `python src/setup_camera.py`.
-- **"Right Hand Up" not registering**: Ensure your hands are at least 10cm apart. The system ignores inputs when hands are touching to prevent jitter.
+| Problem | Solution |
+|:---|:---|
+| No controller detected in game | Ensure ViGEmBus is installed. You should hear the USB sound when `main.py` starts. |
+| Script exits immediately | Run `python src/setup_camera.py` to create a valid `camera_config.txt`. |
+| Character drifts when hands are still | Adjust `NEUTRAL_Y_OFFSET` in CONFIG. Run with `--visualise` and read the WRIST Y value at your natural resting position. |
+| Hand tracking unstable | Improve lighting. Avoid wearing gloves or having a busy background. |
+| Pinch not registering | Bring fingertip closer to thumb. Ring and pinky require more deliberate contact than index. |
+
+---
 
 ## License
 
-This project is licensed under the MIT License.
+MIT License
