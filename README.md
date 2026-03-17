@@ -79,6 +79,8 @@ VisionInput is designed to run on standard hardware.
 VisionInput uses a split-hand control scheme. Both hands must be visible for full control.
 
 *![Photo: both hands in gesture position in front of camera](imgs/overlay_Mediapipe.png)*
+*![Photo: Windows Game Controllers test panel showing buttons lit](imgs/joyCPL_controller_proeprties.png)*
+*![Photo: Windows Game Controllers test panel showing xbox360 controller](imgs/JoyCps_controller_conected.png)*
 
 ### Left Hand — Navigation & D-Pad
 
