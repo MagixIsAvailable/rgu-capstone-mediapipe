@@ -1,3 +1,18 @@
+"""
+Module: main.py
+Project: VisionInput — Gesture-Based Controller for Immersive Projection Environments
+Author: Michal Lazovy | RGU CM4134 Honours Capstone 2026
+Supervisor: Dr John N.A. Brown | Partner: James Hutton Institute, Aberdeen
+
+Purpose:
+Entry point for the VisionInput application. Captures webcam frames via OpenCV, processes hand landmarks using the MediaPipe Legacy Hands API, detects gestures using heuristic geometric analysis, applies EMA smoothing and dead zone logic, and dispatches controller outputs via vigem_output. Optionally runs a WebSocket server for browser-based visualisation and a debug overlay via visualiser.
+
+Dependencies:
+mediapipe, cv2, asyncio, websockets, vigem_output, visualiser
+
+Usage:
+python src/main.py or python src/main.py --visualise
+"""
 import cv2
 import sys
 import time

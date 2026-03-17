@@ -1,3 +1,18 @@
+"""
+Module: visualiser.py
+Project: VisionInput — Gesture-Based Controller for Immersive Projection Environments
+Author: Michal Lazovy | RGU CM4134 Honours Capstone 2026
+Supervisor: Dr John N.A. Brown | Partner: James Hutton Institute, Aberdeen
+
+Purpose:
+Debug overlay rendering module for VisionInput. Draws hand landmarks, skeleton connections, wrist direction vector, bounding box, finger labels, pinch distance indicators, calibration status, and a live data panel (FPS, wrist coordinates, gesture label, joystick values) onto the camera frame. Activated via the --visualise flag in main.py.
+
+Dependencies:
+cv2, numpy
+
+Usage:
+Imported by main.py — not run directly.
+"""
 import cv2
 import numpy as np
 import math

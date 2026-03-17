@@ -1,3 +1,18 @@
+"""
+Module: vigem_output.py
+Project: VisionInput — Gesture-Based Controller for Immersive Projection Environments
+Author: Michal Lazovy | RGU CM4134 Honours Capstone 2026
+Supervisor: Dr John N.A. Brown | Partner: James Hutton Institute, Aberdeen
+
+Purpose:
+Output layer for the VisionInput pipeline. Translates gesture labels and normalised joystick values into virtual Xbox 360 controller signals using the ViGEmBus driver via the vgamepad library. Handles left joystick float values, right hand button presses, D-pad inputs, triggers, and bumpers. All controller output is centralised here — no gesture logic is contained in this module.
+
+Dependencies:
+vgamepad
+
+Usage:
+Imported by main.py — not run directly.
+"""
 import sys
 import json
 import os

@@ -1,3 +1,18 @@
+"""
+Module: setup_camera.py
+Project: VisionInput — Gesture-Based Controller for Immersive Projection Environments
+Author: Michal Lazovy | RGU CM4134 Honours Capstone 2026
+Supervisor: Dr John N.A. Brown | Partner: James Hutton Institute, Aberdeen
+
+Purpose:
+Interactive camera selection utility for VisionInput. Iterates through available camera indices, displays a live preview for each, and saves the selected camera index to camera_config.txt for use by main.py. Run once on first installation or when the camera setup changes.
+
+Dependencies:
+cv2
+
+Usage:
+python src/setup_camera.py
+"""
 import cv2
 import os
 
