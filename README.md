@@ -22,7 +22,7 @@ Developed as an RGU Honours capstone project (CM4134), supervised by Dr John N.A
 - **Camera**: Insta360 GO 3S (webcam mode) and Creative VF0700 webcam
 - **Controller Reference**: Mappings verified against Razer Wolverine V2 using `joy.cpl`
 
-*[Photo: camera mounted on tripod, hands in frame]*
+*[Photo: camera mounted on tripod, hands in frame](imgs/isnta360Go.png)*
 
 ### Minimum Recommendations
 VisionInput is designed to run on standard hardware.
