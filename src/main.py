@@ -281,10 +281,18 @@ async def main(visualise_mode=False, log_latency=False):
             project_root = Path(SCRIPT_DIR).parent
             latency_dir = project_root / CONFIG["latency_log_dir"]
             latency_dir.mkdir(parents=True, exist_ok=True)
-            latency_path = latency_dir / CONFIG["latency_log_file"]
-            if log_latency and not latency_path.exists():
+            session_created_at = time.strftime("%Y-%m-%d %H:%M:%S")
+            session_file_stamp = time.strftime("%Y%m%d_%H%M%S")
+            latency_path = latency_dir / f"latency_log_{session_file_stamp}.csv"
+            if log_latency:
                 with latency_path.open("w", newline="") as f:
-                    csv.writer(f).writerow(["timestamp", "gesture_label", "hand", "latency_ms"])
+                    csv.writer(f).writerow([
+                        "session_created_at",
+                        "timestamp",
+                        "gesture_label",
+                        "hand",
+                        "latency_ms"
+                    ])
 
             while cap.isOpened():
                 ret, frame = cap.read()
@@ -386,6 +394,7 @@ async def main(visualise_mode=False, log_latency=False):
                             with latency_path.open("a", newline="") as f:
                                 writer = csv.writer(f)
                                 writer.writerow([
+                                    session_created_at,
                                     time.strftime("%H:%M:%S"),
                                     gest_str,
                                     handedness.lower(),
@@ -394,8 +403,9 @@ async def main(visualise_mode=False, log_latency=False):
 
                             latency_count += 1
                             if latency_count == CONFIG["latency_trials"]:
+                                saved_path = latency_path.resolve()
                                 print(
-                                    f"\nLatency logging complete - {CONFIG['latency_trials']} trials saved to {latency_path}"
+                                    f"\nLatency logging complete - {CONFIG['latency_trials']} trials saved to {saved_path}"
                                 )
 
                         gest_str = ",".join(gesture_list)

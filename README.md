@@ -9,8 +9,17 @@ Developed as an RGU Honours capstone project (CM4134), supervised by Dr John N.A
 ## System Requirements
 
 - **OS**: Windows 10 or Windows 11 (required for ViGEmBus)
-- **Python**: 3.11 (required — MediaPipe Legacy API is not supported on 3.12+)
+- **Python**: 3.11 or 3.12 (project currently running on Python 3.12.6)
 - **Driver**: [ViGEmBus Driver](https://github.com/nefarius/ViGEmBus/releases) — must be installed manually before running
+
+---
+
+## Current Stage (March 2026)
+
+- Core real-time gesture-to-controller pipeline is implemented and stable.
+- Split-hand controls are active (left hand movement and D-pad, right hand buttons/triggers).
+- Visual debug overlay is available via `--visualise`.
+- Latency logging is now implemented with per-session CSV output and auto timestamping.
 
 ---
 
@@ -70,6 +79,16 @@ VisionInput is designed to run on standard hardware.
    Add `--visualise` to open a debug window showing the camera feed, hand skeleton, and live joystick values:
 ```powershell
    python src/main.py --visualise
+```
+
+   To collect latency trials:
+```powershell
+   python src/main.py --log-latency
+```
+
+   To run both overlay and latency logging:
+```powershell
+   python src/main.py --visualise --log-latency
 ```
 
 ---
@@ -147,6 +166,16 @@ Edit the `CONFIG` dictionary at the top of `src/main.py` to adjust behaviour:
 - **Dead zone** — suppresses accidental input when hands are near neutral position
 - **WebSocket server** — optional gesture broadcast to browser-based frontends (disabled by default)
 - **Debug overlay** — `--visualise` flag shows skeleton, joystick vector, and live values for tuning
+- **Latency logging (session-based)** — `--log-latency` stores timing data to a new timestamped CSV for each run
+
+### Latency Logging
+
+- Enable with `--log-latency`.
+- Stops automatically after `latency_trials` samples (default: 50).
+- Output directory: `logs/latency/`
+- File format per run: `latency_log_YYYYMMDD_HHMMSS.csv`
+- CSV columns: `session_created_at`, `timestamp`, `gesture_label`, `hand`, `latency_ms`
+- Completion message prints the full absolute path of the saved file.
 
 ### Web Interface (Experimental)
 A 360° A-Frame viewer is included in `web/index.html`. To enable:
@@ -159,6 +188,8 @@ A 360° A-Frame viewer is included in `web/index.html`. To enable:
 ```text
 rgu-capstone-mediapipe/
 ├── config/              # Gesture mapping configuration
+├── logs/
+│   └── latency/         # Session-based latency CSV output (generated at runtime)
 ├── src/
 │   ├── main.py          # Entry point, gesture logic, control pipeline
 │   ├── vigem_output.py  # Virtual Xbox controller output layer
