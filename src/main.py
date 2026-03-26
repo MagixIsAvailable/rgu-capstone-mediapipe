@@ -16,11 +16,13 @@ python src/main.py or python src/main.py --visualise
 import cv2
 import sys
 import time
+import csv
 import argparse
 import logging
 from unittest.mock import MagicMock
 import numpy as np
 import os
+from pathlib import Path
 
 # Configure logging
 logging.basicConfig(
@@ -53,6 +55,10 @@ CONFIG = {
     "PINCH_RING":   0.07,
     "PINCH_PINKY":  0.08,
     "CALIBRATION_DURATION": 3.0, # Seconds before controller output is enabled
+    "log_latency": False,         # Enable with --log-latency flag
+    "latency_trials": 50,         # Stop logging after N trials
+    "latency_log_dir": "logs/latency",
+    "latency_log_file": "latency_log.csv",
 }
 
 WEBSOCKET_ENABLED = CONFIG["WEBSOCKET_ENABLED"]
@@ -234,7 +240,7 @@ def map_to_vigem(gesture_list: list[str], handedness: str) -> list[str]:
 # ----------------------------------------------------------------
 # Main loop (async)
 # ----------------------------------------------------------------
-async def main(visualise_mode=False):
+async def main(visualise_mode=False, log_latency=False):
     logging.info("Initializing MediaPipe Hands (Legacy Mode)...")
     with mp_hands.Hands(
         model_complexity=0,
@@ -270,6 +276,15 @@ async def main(visualise_mode=False):
             if WEBSOCKET_ENABLED:
                 logging.info("WebSocket server running on ws://localhost:8765")
             logging.info("Camera running. Press 'q' to quit.")
+
+            latency_count = 0
+            project_root = Path(SCRIPT_DIR).parent
+            latency_dir = project_root / CONFIG["latency_log_dir"]
+            latency_dir.mkdir(parents=True, exist_ok=True)
+            latency_path = latency_dir / CONFIG["latency_log_file"]
+            if log_latency and not latency_path.exists():
+                with latency_path.open("w", newline="") as f:
+                    csv.writer(f).writerow(["timestamp", "gesture_label", "hand", "latency_ms"])
 
             while cap.isOpened():
                 ret, frame = cap.read()
@@ -320,6 +335,12 @@ async def main(visualise_mode=False):
                         lm         = hlp.landmark
                         handedness = result.multi_handedness[i].classification[0].label
 
+                        should_log_latency = (
+                            log_latency and latency_count < CONFIG["latency_trials"]
+                        )
+                        if should_log_latency:
+                            t_start = time.perf_counter()
+
                         gesture_list = detect_gesture(lm, handedness)
                         vigem_label  = map_to_vigem(gesture_list, handedness)
 
@@ -358,6 +379,25 @@ async def main(visualise_mode=False):
 
                         vigem_output.apply_gesture(vigem_label, handedness, norm_x, norm_y)
 
+                        if should_log_latency:
+                            t_end = time.perf_counter()
+                            latency_ms = (t_end - t_start) * 1000
+                            gest_str = ",".join(gesture_list)
+                            with latency_path.open("a", newline="") as f:
+                                writer = csv.writer(f)
+                                writer.writerow([
+                                    time.strftime("%H:%M:%S"),
+                                    gest_str,
+                                    handedness.lower(),
+                                    f"{latency_ms:.2f}",
+                                ])
+
+                            latency_count += 1
+                            if latency_count == CONFIG["latency_trials"]:
+                                print(
+                                    f"\nLatency logging complete - {CONFIG['latency_trials']} trials saved to {latency_path}"
+                                )
+
                         gest_str = ",".join(gesture_list)
                         await broadcast({"x": norm_x, "y": norm_y,
                                          "gesture": gest_str, "hand": handedness})
@@ -389,8 +429,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="MediaPipe Gesture Controller")
     parser.add_argument("--visualise", action="store_true",
                         help="Enable rich visualisation overlay")
+    parser.add_argument("--log-latency", action="store_true",
+                        help="Log gesture latency to logs/latency/latency_log.csv")
     args = parser.parse_args()
     try:
-        asyncio.run(main(visualise_mode=args.visualise))
+        asyncio.run(main(
+            visualise_mode=args.visualise,
+            log_latency=(CONFIG["log_latency"] or args.log_latency)
+        ))
     except KeyboardInterrupt:
         logging.info("Program stopped by user.")
