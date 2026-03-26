@@ -295,6 +295,11 @@ async def main(visualise_mode=False, log_latency=False):
                     ])
 
             while cap.isOpened():
+                frame_t_start = None
+                if log_latency and latency_count < CONFIG["latency_trials"]:
+                    # Measure end-to-end latency from frame capture through ViGEm output.
+                    frame_t_start = time.perf_counter()
+
                 ret, frame = cap.read()
                 if not ret:
                     logging.error("Failed to receive frame.")
@@ -343,12 +348,6 @@ async def main(visualise_mode=False, log_latency=False):
                         lm         = hlp.landmark
                         handedness = result.multi_handedness[i].classification[0].label
 
-                        should_log_latency = (
-                            log_latency and latency_count < CONFIG["latency_trials"]
-                        )
-                        if should_log_latency:
-                            t_start = time.perf_counter()
-
                         gesture_list = detect_gesture(lm, handedness)
                         vigem_label  = map_to_vigem(gesture_list, handedness)
 
@@ -387,9 +386,15 @@ async def main(visualise_mode=False, log_latency=False):
 
                         vigem_output.apply_gesture(vigem_label, handedness, norm_x, norm_y)
 
+                        is_non_neutral = any(g != "OPEN_PALM" for g in gesture_list)
+                        should_log_latency = (
+                            frame_t_start is not None
+                            and is_non_neutral
+                            and latency_count < CONFIG["latency_trials"]
+                        )
                         if should_log_latency:
                             t_end = time.perf_counter()
-                            latency_ms = (t_end - t_start) * 1000
+                            latency_ms = (t_end - frame_t_start) * 1000
                             gest_str = ",".join(gesture_list)
                             with latency_path.open("a", newline="") as f:
                                 writer = csv.writer(f)

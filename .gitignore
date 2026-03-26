@@ -225,6 +225,7 @@ Desktop.ini
 
 # Logs
 *.log
+*.csv
 
 # Local configuration
 src/camera_config.txt
