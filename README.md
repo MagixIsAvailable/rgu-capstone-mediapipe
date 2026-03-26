@@ -70,7 +70,7 @@ VisionInput is designed to run on standard hardware.
 ```
    Press `y` to select a camera when the preview looks correct.
 
-   *![Photo: camera option](imgs/setup_camera.png)*
+   *![Photo: camera option](<img width="864" height="676" alt="Image" src="https://github.com/user-attachments/assets/6c5324ae-356c-4529-b87a-0be0e72a47b2" />)*
 
 2. **Launch the controller**
 ```powershell
@@ -218,7 +218,7 @@ rgu-capstone-mediapipe/
 ## License
 
 MIT License
-<img width="864" height="676" alt="Image" src="https://github.com/user-attachments/assets/6c5324ae-356c-4529-b87a-0be0e72a47b2" />
+
 <img width="495" height="392" alt="Image" src="https://github.com/user-attachments/assets/c8f4cf9a-e56f-4116-9307-c687ee53c35d" />
 ![Image](https://github.com/user-attachments/assets/ac31b828-b354-4b9b-b6fb-3b0b7895a79d)
 ![Image](https://github.com/user-attachments/assets/aa6aa020-ef55-4f43-b17a-6ba1b9567a2b)
