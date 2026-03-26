@@ -56,7 +56,7 @@ CONFIG = {
     "PINCH_PINKY":  0.08,
     "CALIBRATION_DURATION": 3.0, # Seconds before controller output is enabled
     "log_latency": False,         # Enable with --log-latency flag
-    "latency_trials": 50,         # Stop logging after N trials
+    "latency_trials": 200,         # Stop logging after N trials
     "latency_log_dir": "logs/latency",
     "latency_log_file": "latency_log.csv",
 }
