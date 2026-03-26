@@ -70,7 +70,7 @@ VisionInput is designed to run on standard hardware.
 ```
    Press `y` to select a camera when the preview looks correct.
 
-   *![Photo: camera option](<img width="864" height="676" alt="Image" src="https://github.com/user-attachments/assets/6c5324ae-356c-4529-b87a-0be0e72a47b2" />)*
+   ![Photo: camera option](https://github.com/user-attachments/assets/6c5324ae-356c-4529-b87a-0be0e72a47b2)
 
 2. **Launch the controller**
 ```powershell
