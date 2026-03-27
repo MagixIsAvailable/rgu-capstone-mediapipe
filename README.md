@@ -104,8 +104,7 @@ VisionInput is designed to run on standard hardware.
 VisionInput uses a split-hand control scheme. Both hands must be visible for full control.
 
 *![Photo: both hands in gesture position in front of camera](imgs/overlay_Mediapipe.png)*
-*![Photo: Windows Game Controllers test panel showing buttons lit](imgs/joyCPL_controller_proeprties.png)*
-*![Photo: Windows Game Controllers test panel showing xbox360 controller](imgs/JoyCps_controller_conected.png)*
+
 
 ### Left Hand — Navigation & D-Pad
 
@@ -132,6 +131,7 @@ Controls the **Left Analog Stick** and **D-Pad** simultaneously.
 ### Right Hand — Action Buttons
 
 Two-layer gesture system. **Pinches take priority over bends.**
+
 <img width="394" height="452" alt="Image" src="https://github.com/user-attachments/assets/4caaccb8-152e-4adc-bb0d-553c97c6f576" />
 
 <img width="372" height="317" alt="Image" src="https://github.com/user-attachments/assets/02224c1a-e410-474f-976d-c0c3f2190f12" />
