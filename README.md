@@ -50,7 +50,7 @@ VisionInput is designed to run on standard hardware.
 1. **Install ViGEmBus Driver**
    Download and run the latest installer from the link above. You should hear the Windows USB connection sound when the script starts successfully.
 
-   <img width="394" height="452" alt="Image" src="https://github.com/user-attachments/assets/a038fbe5-db6f-4d2a-89d9-8869dfab8334" />
+<img width="495" height="392" alt="Image" src="https://github.com/user-attachments/assets/1047fe38-f219-4ff7-99d5-c2b6ccdda9b5" />
 
 2. **Clone the Repository**
 ```powershell
@@ -133,8 +133,10 @@ Controls the **Left Analog Stick** and **D-Pad** simultaneously.
 
 Two-layer gesture system. **Pinches take priority over bends.**
 <img width="394" height="452" alt="Image" src="https://github.com/user-attachments/assets/4caaccb8-152e-4adc-bb0d-553c97c6f576" />
+
 <img width="372" height="317" alt="Image" src="https://github.com/user-attachments/assets/02224c1a-e410-474f-976d-c0c3f2190f12" />
-<img width="495" height="392" alt="Image" src="https://github.com/user-attachments/assets/1047fe38-f219-4ff7-99d5-c2b6ccdda9b5" />
+
+
 *[Photo: Windows Game Controllers test panel showing buttons lit]*
 
 | Gesture | Controller Input |
