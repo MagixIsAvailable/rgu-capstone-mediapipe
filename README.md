@@ -28,9 +28,11 @@ Developed as an RGU Honours capstone project (CM4134), supervised by Dr John N.A
 ### Developed & Tested On
 - **CPU**: AMD Ryzen 9 5950X
 - **GPU**: NVIDIA RTX 3090
+- **RAM**: 64GB DDR4  3200Mhz
 - **Camera**: Insta360 GO 3S (webcam mode) and Creative VF0700 webcam
 - **Controller Reference**: Mappings verified against Razer Wolverine V2 using `joy.cpl`
-
+<img width="372" height="317" alt="Image" src="https://github.com/user-attachments/assets/22451a90-adbd-4916-82e3-522a5f43dbbc"/>
+<img width="372" height="317" alt="Image" src="https://github.com/user-attachments/assets/d4ee0a16-8992-43c3-b43b-203700470c98"/>
 *[Photo: camera mounted on tripod, hands in frame](imgs/isnta360Go.png)*
 
 ### Minimum Recommendations
@@ -226,5 +228,3 @@ MIT License
 <img width="720" height="640" alt="Image" src="https://github.com/user-attachments/assets/aa6aa020-ef55-4f43-b17a-6ba1b9567a2b"/>
 <img width="372" height="317" alt="Image" src="https://github.com/user-attachments/assets/b7aaf94e-38c9-4dc9-9f43-d38115514bca"/>
 <img width="575" height="355" alt="Image" src="https://github.com/user-attachments/assets/08a592d0-fbf6-423b-9d8d-177d2e96d4a9"/>
-<img width="372" height="317" alt="Image" src="https://github.com/user-attachments/assets/22451a90-adbd-4916-82e3-522a5f43dbbc"/>
-<img width="372" height="317" alt="Image" src="https://github.com/user-attachments/assets/d4ee0a16-8992-43c3-b43b-203700470c98"/>
