@@ -134,7 +134,7 @@ Two-layer gesture system. **Pinches take priority over bends.**
 
 <img width="394" height="452" alt="Image" src="https://github.com/user-attachments/assets/4caaccb8-152e-4adc-bb0d-553c97c6f576" />
 
-<img width="372" height="317" alt="Image" src="https://github.com/user-attachments/assets/02224c1a-e410-474f-976d-c0c3f2190f12" />
+<img width="394" height="452" alt="Image" src="https://github.com/user-attachments/assets/02224c1a-e410-474f-976d-c0c3f2190f12" />
 
 
 *[Photo: Windows Game Controllers test panel showing buttons lit]*
