@@ -45,6 +45,7 @@ VisionInput is designed to run on standard hardware.
 
 1. **Install ViGEmBus Driver**
    Download and run the latest installer from the link above. You should hear the Windows USB connection sound when the script starts successfully.
+
    <img width="394" height="452" alt="Image" src="https://github.com/user-attachments/assets/a038fbe5-db6f-4d2a-89d9-8869dfab8334" />
 
 2. **Clone the Repository**
