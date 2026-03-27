@@ -223,7 +223,7 @@ MIT License
 
 
 
-<img width="372" height="317" alt="Image" src="https://github.com/user-attachments/assets/aa6aa020-ef55-4f43-b17a-6ba1b9567a2b"/>
+<img width="720" height="640" alt="Image" src="https://github.com/user-attachments/assets/aa6aa020-ef55-4f43-b17a-6ba1b9567a2b"/>
 
 <img width="372" height="317" alt="Image" src="https://github.com/user-attachments/assets/b7aaf94e-38c9-4dc9-9f43-d38115514bca"/>
 <img width="575" height="355" alt="Image" src="https://github.com/user-attachments/assets/08a592d0-fbf6-423b-9d8d-177d2e96d4a9"/>
