@@ -34,7 +34,8 @@ Developed as an RGU Honours capstone project (CM4134), supervised by Dr John N.A
 <img width="372" height="317" alt="Image" src="https://github.com/user-attachments/assets/22451a90-adbd-4916-82e3-522a5f43dbbc"/>
 <img width="372" height="317" alt="Image" src="https://github.com/user-attachments/assets/d4ee0a16-8992-43c3-b43b-203700470c98"/>
 
-*[Photo: camera mounted on tripod, hands in frame]<img width="720" height="640" alt="Image" src="https://github.com/user-attachments/assets/aa6aa020-ef55-4f43-b17a-6ba1b9567a2b"/>*
+<img width="720" height="640" alt="Image" src="https://github.com/user-attachments/assets/aa6aa020-ef55-4f43-b17a-6ba1b9567a2b"/>
+*Photo: camera mounted on tripod, hands in frame*
 
 ### Minimum Recommendations
 VisionInput is designed to run on standard hardware.
@@ -131,7 +132,9 @@ Controls the **Left Analog Stick** and **D-Pad** simultaneously.
 ### Right Hand — Action Buttons
 
 Two-layer gesture system. **Pinches take priority over bends.**
-
+<img width="394" height="452" alt="Image" src="https://github.com/user-attachments/assets/4caaccb8-152e-4adc-bb0d-553c97c6f576" />
+<img width="372" height="317" alt="Image" src="https://github.com/user-attachments/assets/02224c1a-e410-474f-976d-c0c3f2190f12" />
+<img width="495" height="392" alt="Image" src="https://github.com/user-attachments/assets/1047fe38-f219-4ff7-99d5-c2b6ccdda9b5" />
 *[Photo: Windows Game Controllers test panel showing buttons lit]*
 
 | Gesture | Controller Input |
@@ -227,4 +230,3 @@ MIT License
 
 
 
-<img width="372" height="317" alt="Image" src="https://github.com/user-attachments/assets/b7aaf94e-38c9-4dc9-9f43-d38115514bca"/>
