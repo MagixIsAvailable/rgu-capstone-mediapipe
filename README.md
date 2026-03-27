@@ -34,7 +34,7 @@ Developed as an RGU Honours capstone project (CM4134), supervised by Dr John N.A
 <img width="372" height="317" alt="Image" src="https://github.com/user-attachments/assets/22451a90-adbd-4916-82e3-522a5f43dbbc"/>
 <img width="372" height="317" alt="Image" src="https://github.com/user-attachments/assets/d4ee0a16-8992-43c3-b43b-203700470c98"/>
 
-*[Photo: camera mounted on tripod, hands in frame]*(<img width="720" height="640" alt="Image" src="https://github.com/user-attachments/assets/aa6aa020-ef55-4f43-b17a-6ba1b9567a2b"/>)*
+*[Photo: camera mounted on tripod, hands in frame]<img width="720" height="640" alt="Image" src="https://github.com/user-attachments/assets/aa6aa020-ef55-4f43-b17a-6ba1b9567a2b"/>*
 
 ### Minimum Recommendations
 VisionInput is designed to run on standard hardware.
