@@ -219,8 +219,8 @@ rgu-capstone-mediapipe/
 
 MIT License
 
-<img width="495" height="392" alt="Image" src="https://github.com/user-attachments/assets/c8f4cf9a-e56f-4116-9307-c687ee53c35d" />
-![Image](https://github.com/user-attachments/assets/ac31b828-b354-4b9b-b6fb-3b0b7895a79d)
+
+
 ![Image](https://github.com/user-attachments/assets/aa6aa020-ef55-4f43-b17a-6ba1b9567a2b)
 <img width="394" height="452" alt="Image" src="https://github.com/user-attachments/assets/a038fbe5-db6f-4d2a-89d9-8869dfab8334" />
 <img width="372" height="317" alt="Image" src="https://github.com/user-attachments/assets/b7aaf94e-38c9-4dc9-9f43-d38115514bca" />
