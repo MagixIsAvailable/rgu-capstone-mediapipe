@@ -278,8 +278,8 @@ async def main(
         # Request 60 FPS (many webcams require MJPG for >30fps at high res)
         cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
         cap.set(cv2.CAP_PROP_FPS, 60)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
         if not cap.isOpened():
             logging.error("Run 'python src/setup_camera.py' to fix this.")
             input("Press Enter to exit...")
@@ -348,6 +348,8 @@ async def main(
                     "gesture_label",
                     "hand",
                     "latency_ms",
+                    "norm_x",
+                    "norm_y",
                 ])
 
             try:
@@ -487,6 +489,8 @@ async def main(
                                     gest_str,
                                     handedness.lower(),
                                     f"{latency_ms:.2f}",
+                                    f"{norm_x:.3f}",
+                                    f"{norm_y:.3f}",
                                 ])
 
                                 latency_count += 1
