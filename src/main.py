@@ -59,6 +59,8 @@ CONFIG = {
     "latency_trials": 200,         # Stop logging after N trials
     "latency_log_dir": "logs/latency",
     "latency_log_file": "latency_log.csv",
+    "benchmark_log_dir": "logs/benchmark",
+    "benchmark_log_file": "benchmark_runs.csv",
 }
 
 WEBSOCKET_ENABLED = CONFIG["WEBSOCKET_ENABLED"]
@@ -256,7 +258,12 @@ def map_to_vigem(gesture_list: list[str], handedness: str) -> list[str]:
 # ----------------------------------------------------------------
 # Main loop (async)
 # ----------------------------------------------------------------
-async def main(visualise_mode=False, log_latency=False):
+async def main(
+    visualise_mode=False,
+    log_latency=False,
+    benchmark_seconds=0.0,
+    benchmark_capture_only=False,
+):
     logging.info("Initializing MediaPipe Hands (Legacy Mode)...")
     with mp_hands.Hands(
         model_complexity=0,
@@ -281,6 +288,23 @@ async def main(visualise_mode=False, log_latency=False):
         frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         camera_resolution = f"{frame_width}x{frame_height}"
+
+        benchmark_enabled = benchmark_seconds > 0
+        benchmark_start = time.perf_counter()
+        benchmark_stats = {
+            "frames": 0,
+            "capture_s": 0.0,
+            "preprocess_s": 0.0,
+            "mediapipe_s": 0.0,
+            "output_s": 0.0,
+            "total_s": 0.0,
+        }
+        if benchmark_enabled:
+            logging.info(
+                "Benchmark mode enabled: %.1fs (%s)",
+                benchmark_seconds,
+                "capture only" if benchmark_capture_only else "full pipeline",
+            )
 
         calibration_start = time.time()
         prev_frame_time   = time.time()
@@ -325,22 +349,41 @@ async def main(visualise_mode=False, log_latency=False):
 
             try:
                 while cap.isOpened():
+                    frame_loop_t0 = time.perf_counter()
                     frame_t_start = None
                     if log_latency and latency_count < CONFIG["latency_trials"]:
                         # Measure end-to-end latency from frame capture through ViGEm output.
                         frame_t_start = time.perf_counter()
 
+                    capture_t0 = time.perf_counter()
                     ret, frame = cap.read()
+                    capture_t1 = time.perf_counter()
+                    benchmark_stats["capture_s"] += (capture_t1 - capture_t0)
                     if not ret:
                         logging.error("Failed to receive frame.")
                         break
                     if visualise_mode and (cv2.waitKey(1) & 0xFF == ord('q')):
                         break
 
+                    if benchmark_enabled and benchmark_capture_only:
+                        benchmark_stats["frames"] += 1
+                        benchmark_stats["total_s"] += (time.perf_counter() - frame_loop_t0)
+                        if (time.perf_counter() - benchmark_start) >= benchmark_seconds:
+                            break
+                        await asyncio.sleep(0)
+                        continue
+
+                    preprocess_t0 = time.perf_counter()
                     frame = cv2.flip(frame, 1)
                     rgb   = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     rgb.flags.writeable = False
+                    preprocess_t1 = time.perf_counter()
+                    benchmark_stats["preprocess_s"] += (preprocess_t1 - preprocess_t0)
+
+                    mediapipe_t0 = time.perf_counter()
                     result = detector.process(rgb)
+                    mediapipe_t1 = time.perf_counter()
+                    benchmark_stats["mediapipe_s"] += (mediapipe_t1 - mediapipe_t0)
                     rgb.flags.writeable = True
 
                     now = time.time()
@@ -348,7 +391,10 @@ async def main(visualise_mode=False, log_latency=False):
                     fps = 1.0 / dt if dt > 0 else 0
                     prev_frame_time = now
 
-                    elapsed       = now - calibration_start
+                    elapsed = now - calibration_start
+                    if benchmark_enabled:
+                        # Benchmark mode should measure steady-state processing, not startup calibration delay.
+                        elapsed = CONFIG["CALIBRATION_DURATION"]
                     is_calibrating = elapsed < CONFIG["CALIBRATION_DURATION"]
 
                     calculated_values = {
@@ -359,6 +405,7 @@ async def main(visualise_mode=False, log_latency=False):
                         'pinch_dists': [], 'pinch_speeds': [], 'wrist_coords': []
                     }
 
+                    output_t0 = time.perf_counter()
                     if result.multi_hand_landmarks and not is_calibrating:
                         # Align pinch history length to detected hand count
                         n_hands = len(result.multi_hand_landmarks)
@@ -459,16 +506,88 @@ async def main(visualise_mode=False, log_latency=False):
                         vigem_output.release_all()
                         prev_pinch_dists = []
                         ema_state.clear()
+                    output_t1 = time.perf_counter()
+                    benchmark_stats["output_s"] += (output_t1 - output_t0)
 
                     if visualise_mode:
                         vis_lm = [hlp.landmark for hlp in (result.multi_hand_landmarks or [])]
                         annotated = visualiser.draw_overlay(frame, vis_lm, calculated_values)
                         cv2.imshow("MediaPipe Gesture Controller", annotated)
 
+                    benchmark_stats["frames"] += 1
+                    benchmark_stats["total_s"] += (time.perf_counter() - frame_loop_t0)
+                    if benchmark_enabled and (time.perf_counter() - benchmark_start) >= benchmark_seconds:
+                        break
+
                     await asyncio.sleep(0)
             finally:
+                cap.release()
+                if visualise_mode:
+                    cv2.destroyAllWindows()
                 if latency_file_handle is not None:
                     latency_file_handle.close()
+
+                if benchmark_enabled:
+                    runtime_s = max(1e-9, time.perf_counter() - benchmark_start)
+                    frames = benchmark_stats["frames"]
+                    fps = frames / runtime_s
+                    per_frame_ms = lambda s: (s / frames * 1000.0) if frames else 0.0
+                    capture_ms = per_frame_ms(benchmark_stats["capture_s"])
+                    preprocess_ms = per_frame_ms(benchmark_stats["preprocess_s"])
+                    mediapipe_ms = per_frame_ms(benchmark_stats["mediapipe_s"])
+                    output_ms = per_frame_ms(benchmark_stats["output_s"])
+                    loop_total_ms = per_frame_ms(benchmark_stats["total_s"])
+
+                    benchmark_dir = project_root / CONFIG["benchmark_log_dir"]
+                    benchmark_dir.mkdir(parents=True, exist_ok=True)
+                    benchmark_path = benchmark_dir / CONFIG["benchmark_log_file"]
+                    benchmark_file_exists = benchmark_path.exists() and benchmark_path.stat().st_size > 0
+
+                    with benchmark_path.open("a", newline="") as f:
+                        writer = csv.writer(f)
+                        if not benchmark_file_exists:
+                            writer.writerow([
+                                "timestamp",
+                                "camera_label",
+                                "camera_resolution",
+                                "mode",
+                                "duration_s",
+                                "frames",
+                                "fps",
+                                "capture_ms_per_frame",
+                                "preprocess_ms_per_frame",
+                                "mediapipe_ms_per_frame",
+                                "output_ms_per_frame",
+                                "loop_total_ms_per_frame",
+                            ])
+
+                        writer.writerow([
+                            time.strftime("%Y-%m-%d %H:%M:%S"),
+                            CAMERA_LABEL,
+                            camera_resolution,
+                            "capture-only" if benchmark_capture_only else "full-pipeline",
+                            f"{runtime_s:.2f}",
+                            frames,
+                            f"{fps:.2f}",
+                            f"{capture_ms:.2f}",
+                            f"{preprocess_ms:.2f}",
+                            f"{mediapipe_ms:.2f}",
+                            f"{output_ms:.2f}",
+                            f"{loop_total_ms:.2f}",
+                        ])
+
+                    print("\n=== Benchmark Summary ===")
+                    print(f"Mode: {'capture-only' if benchmark_capture_only else 'full-pipeline'}")
+                    print(f"Duration: {runtime_s:.2f}s")
+                    print(f"Frames: {frames}")
+                    print(f"FPS: {fps:.2f}")
+                    print(f"Capture avg: {capture_ms:.2f} ms/frame")
+                    if not benchmark_capture_only:
+                        print(f"Preprocess avg: {preprocess_ms:.2f} ms/frame")
+                        print(f"MediaPipe avg: {mediapipe_ms:.2f} ms/frame")
+                        print(f"Output avg: {output_ms:.2f} ms/frame")
+                    print(f"Loop total avg: {loop_total_ms:.2f} ms/frame")
+                    print(f"Benchmark row saved to: {benchmark_path.resolve()}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="MediaPipe Gesture Controller")
@@ -476,11 +595,17 @@ if __name__ == "__main__":
                         help="Enable rich visualisation overlay")
     parser.add_argument("--log-latency", action="store_true",
                         help="Log gesture latency to logs/latency/latency_log.csv")
+    parser.add_argument("--benchmark-seconds", type=float, default=0.0,
+                        help="Run benchmark for N seconds and print timing summary")
+    parser.add_argument("--benchmark-capture-only", action="store_true",
+                        help="Benchmark capture only (skip MediaPipe and output processing)")
     args = parser.parse_args()
     try:
         asyncio.run(main(
             visualise_mode=args.visualise,
-            log_latency=(CONFIG["log_latency"] or args.log_latency)
+            log_latency=(CONFIG["log_latency"] or args.log_latency),
+            benchmark_seconds=args.benchmark_seconds,
+            benchmark_capture_only=args.benchmark_capture_only,
         ))
     except KeyboardInterrupt:
         logging.info("Program stopped by user.")
