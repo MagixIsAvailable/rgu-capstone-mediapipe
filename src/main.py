@@ -252,8 +252,8 @@ async def main(visualise_mode=False, log_latency=False):
         # Request 60 FPS (many webcams require MJPG for >30fps at high res)
         cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
         cap.set(cv2.CAP_PROP_FPS, 60)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1080)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
         if not cap.isOpened():
             logging.error("Run 'python src/setup_camera.py' to fix this.")
             input("Press Enter to exit...")
