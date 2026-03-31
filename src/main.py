@@ -180,7 +180,7 @@ def detect_gesture(landmarks, handedness="Left") -> list[str]:
     Neutral state returns ["OPEN_PALM"].
     """
     def dist(a, b):
-        return math.sqrt((a.x - b.x)**2 + (a.y - b.y)**2)
+        return math.dist((a.x, a.y), (b.x, b.y))
 
     if handedness == "Right":
         thumb = landmarks[4]
@@ -306,165 +306,169 @@ async def main(visualise_mode=False, log_latency=False):
             session_created_at = time.strftime("%Y-%m-%d %H:%M:%S")
             session_file_stamp = time.strftime("%Y%m%d_%H%M%S")
             latency_path = latency_dir / f"latency_log_{session_file_stamp}.csv"
+            latency_file_handle = None
+            latency_writer = None
             if log_latency:
-                with latency_path.open("w", newline="") as f:
-                    writer = csv.writer(f)
-                    # Write run metadata once to avoid duplicating static values per event row.
-                    writer.writerow(["session_created_at", session_created_at])
-                    writer.writerow(["camera_label", CAMERA_LABEL])
-                    writer.writerow(["camera_resolution", camera_resolution])
-                    writer.writerow([])
-                    writer.writerow([
-                        "timestamp",
-                        "gesture_label",
-                        "hand",
-                        "latency_ms",
-                    ])
+                latency_file_handle = latency_path.open("w", newline="")
+                latency_writer = csv.writer(latency_file_handle)
+                # Write run metadata once to avoid duplicating static values per event row.
+                latency_writer.writerow(["session_created_at", session_created_at])
+                latency_writer.writerow(["camera_label", CAMERA_LABEL])
+                latency_writer.writerow(["camera_resolution", camera_resolution])
+                latency_writer.writerow([])
+                latency_writer.writerow([
+                    "timestamp",
+                    "gesture_label",
+                    "hand",
+                    "latency_ms",
+                ])
 
-            while cap.isOpened():
-                frame_t_start = None
-                if log_latency and latency_count < CONFIG["latency_trials"]:
-                    # Measure end-to-end latency from frame capture through ViGEm output.
-                    frame_t_start = time.perf_counter()
+            try:
+                while cap.isOpened():
+                    frame_t_start = None
+                    if log_latency and latency_count < CONFIG["latency_trials"]:
+                        # Measure end-to-end latency from frame capture through ViGEm output.
+                        frame_t_start = time.perf_counter()
 
-                ret, frame = cap.read()
-                if not ret:
-                    logging.error("Failed to receive frame.")
-                    break
-                if visualise_mode and (cv2.waitKey(1) & 0xFF == ord('q')):
-                    break
+                    ret, frame = cap.read()
+                    if not ret:
+                        logging.error("Failed to receive frame.")
+                        break
+                    if visualise_mode and (cv2.waitKey(1) & 0xFF == ord('q')):
+                        break
 
-                frame = cv2.flip(frame, 1)
-                rgb   = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                rgb.flags.writeable = False
-                result = detector.process(rgb)
-                rgb.flags.writeable = True
+                    frame = cv2.flip(frame, 1)
+                    rgb   = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    rgb.flags.writeable = False
+                    result = detector.process(rgb)
+                    rgb.flags.writeable = True
 
-                now = time.time()
-                dt  = now - prev_frame_time
-                fps = 1.0 / dt if dt > 0 else 0
-                prev_frame_time = now
+                    now = time.time()
+                    dt  = now - prev_frame_time
+                    fps = 1.0 / dt if dt > 0 else 0
+                    prev_frame_time = now
 
-                elapsed       = now - calibration_start
-                is_calibrating = elapsed < CONFIG["CALIBRATION_DURATION"]
+                    elapsed       = now - calibration_start
+                    is_calibrating = elapsed < CONFIG["CALIBRATION_DURATION"]
 
-                calculated_values = {
-                    'fps': fps,
-                    'calibration_status': "calibrating" if is_calibrating else "calibrated",
-                    'calibration_time_remain': max(0, CONFIG["CALIBRATION_DURATION"] - elapsed),
-                    'gestures': [], 'handedness': [],
-                    'pinch_dists': [], 'pinch_speeds': [], 'wrist_coords': []
-                }
+                    calculated_values = {
+                        'fps': fps,
+                        'calibration_status': "calibrating" if is_calibrating else "calibrated",
+                        'calibration_time_remain': max(0, CONFIG["CALIBRATION_DURATION"] - elapsed),
+                        'gestures': [], 'handedness': [],
+                        'pinch_dists': [], 'pinch_speeds': [], 'wrist_coords': []
+                    }
 
-                if result.multi_hand_landmarks and not is_calibrating:
-                    # Align pinch history length to detected hand count
-                    n_hands = len(result.multi_hand_landmarks)
-                    while len(prev_pinch_dists) < n_hands:
-                        prev_pinch_dists.append(0.0)
-                    prev_pinch_dists = prev_pinch_dists[:n_hands]
+                    if result.multi_hand_landmarks and not is_calibrating:
+                        # Align pinch history length to detected hand count
+                        n_hands = len(result.multi_hand_landmarks)
+                        while len(prev_pinch_dists) < n_hands:
+                            prev_pinch_dists.append(0.0)
+                        prev_pinch_dists = prev_pinch_dists[:n_hands]
 
-                    # Pre-pass: identify left/right wrist positions for inter-hand Y
-                    left_lms = right_lms = None
-                    for idx, h_obj in enumerate(result.multi_handedness):
-                        lbl = h_obj.classification[0].label
-                        lm  = result.multi_hand_landmarks[idx].landmark
-                        if lbl == "Left":  left_lms  = lm
-                        elif lbl == "Right": right_lms = lm
+                        # Pre-pass: identify left/right wrist positions for inter-hand Y
+                        left_lms = right_lms = None
+                        for idx, h_obj in enumerate(result.multi_handedness):
+                            lbl = h_obj.classification[0].label
+                            lm  = result.multi_hand_landmarks[idx].landmark
+                            if lbl == "Left":  left_lms  = lm
+                            elif lbl == "Right": right_lms = lm
 
-                    for i, hlp in enumerate(result.multi_hand_landmarks):
-                        lm         = hlp.landmark
-                        handedness = result.multi_handedness[i].classification[0].label
+                        for i, hlp in enumerate(result.multi_hand_landmarks):
+                            lm         = hlp.landmark
+                            handedness = result.multi_handedness[i].classification[0].label
 
-                        gesture_list = detect_gesture(lm, handedness)
-                        vigem_label  = map_to_vigem(gesture_list, handedness)
+                            gesture_list = detect_gesture(lm, handedness)
+                            vigem_label  = map_to_vigem(gesture_list, handedness)
 
-                        # Joystick X: hand tilt (wrist → middle MCP)
-                        wrist  = lm[0]
-                        mcp    = lm[9]
-                        h_size = math.sqrt((mcp.x - wrist.x)**2 + (mcp.y - wrist.y)**2)
-                        tilt_x = (mcp.x - wrist.x) / (h_size + 1e-6)
-                        norm_x = tilt_x * CONFIG["TILT_GAIN"]
+                            # Joystick X: hand tilt (wrist → middle MCP)
+                            wrist  = lm[0]
+                            mcp    = lm[9]
+                            h_size = math.sqrt((mcp.x - wrist.x)**2 + (mcp.y - wrist.y)**2)
+                            tilt_x = (mcp.x - wrist.x) / (h_size + 1e-6)
+                            norm_x = tilt_x * CONFIG["TILT_GAIN"]
 
-                        # Joystick Y: inter-hand angle (left hand) or tilt fallback
-                        if handedness == "Left" and right_lms:
-                            l_w, r_w = left_lms[0], right_lms[0]
-                            dx = r_w.x - l_w.x
-                            dy = r_w.y - l_w.y
-                            
-                            if abs(dx) < 0.05 and abs(dy) < 0.05:
-                                norm_y = 0.0
+                            # Joystick Y: inter-hand angle (left hand) or tilt fallback
+                            if handedness == "Left" and right_lms:
+                                l_w, r_w = left_lms[0], right_lms[0]
+                                dx = r_w.x - l_w.x
+                                dy = r_w.y - l_w.y
+                                
+                                if abs(dx) < 0.05 and abs(dy) < 0.05:
+                                    norm_y = 0.0
+                                else:
+                                    angle = math.atan2(dy, dx)
+                                    # Sensitivity: Normalize against ~36 degrees (pi/5)
+                                    norm_y = -(angle / (math.pi / 5))
                             else:
-                                angle = math.atan2(dy, dx)
-                                # Sensitivity: Normalize against ~36 degrees (pi/5)
-                                norm_y = -(angle / (math.pi / 5))
-                        else:
-                            tilt_y = (wrist.y - mcp.y) / (h_size + 1e-6)
-                            norm_y = -(tilt_y - CONFIG["NEUTRAL_Y_OFFSET"]) * CONFIG["TILT_GAIN"]
+                                tilt_y = (wrist.y - mcp.y) / (h_size + 1e-6)
+                                norm_y = -(tilt_y - CONFIG["NEUTRAL_Y_OFFSET"]) * CONFIG["TILT_GAIN"]
 
-                        # Per-hand EMA (fixes shared-state bug)
-                        prev = ema_state.get(i, (0.0, 0.0))
-                        a    = CONFIG["EMA_ALPHA"]
-                        norm_x = a * norm_x + (1 - a) * prev[0]
-                        norm_y = a * norm_y + (1 - a) * prev[1]
-                        ema_state[i] = (norm_x, norm_y)
+                            # Per-hand EMA (fixes shared-state bug)
+                            prev = ema_state.get(i, (0.0, 0.0))
+                            a    = CONFIG["EMA_ALPHA"]
+                            norm_x = a * norm_x + (1 - a) * prev[0]
+                            norm_y = a * norm_y + (1 - a) * prev[1]
+                            ema_state[i] = (norm_x, norm_y)
 
-                        norm_x = max(-1.0, min(1.0, norm_x))
-                        norm_y = max(-1.0, min(1.0, norm_y))
+                            norm_x = max(-1.0, min(1.0, norm_x))
+                            norm_y = max(-1.0, min(1.0, norm_y))
 
-                        vigem_output.apply_gesture(vigem_label, handedness, norm_x, norm_y)
+                            vigem_output.apply_gesture(vigem_label, handedness, norm_x, norm_y)
 
-                        is_non_neutral = any(g != "OPEN_PALM" for g in gesture_list)
-                        should_log_latency = (
-                            frame_t_start is not None
-                            and is_non_neutral
-                            and latency_count < CONFIG["latency_trials"]
-                        )
-                        if should_log_latency:
-                            t_end = time.perf_counter()
-                            latency_ms = (t_end - frame_t_start) * 1000
-                            gest_str = ",".join(gesture_list)
-                            with latency_path.open("a", newline="") as f:
-                                writer = csv.writer(f)
-                                writer.writerow([
+                            is_non_neutral = any(g != "OPEN_PALM" for g in gesture_list)
+                            should_log_latency = (
+                                frame_t_start is not None
+                                and is_non_neutral
+                                and latency_count < CONFIG["latency_trials"]
+                            )
+                            if should_log_latency and latency_writer is not None:
+                                t_end = time.perf_counter()
+                                latency_ms = (t_end - frame_t_start) * 1000
+                                gest_str = ",".join(gesture_list)
+                                latency_writer.writerow([
                                     time.strftime("%H:%M:%S"),
                                     gest_str,
                                     handedness.lower(),
                                     f"{latency_ms:.2f}",
                                 ])
 
-                            latency_count += 1
-                            if latency_count == CONFIG["latency_trials"]:
-                                saved_path = latency_path.resolve()
-                                print(
-                                    f"\nLatency logging complete - {CONFIG['latency_trials']} trials saved to {saved_path}"
-                                )
+                                latency_count += 1
+                                if latency_count == CONFIG["latency_trials"]:
+                                    saved_path = latency_path.resolve()
+                                    print(
+                                        f"\nLatency logging complete - {CONFIG['latency_trials']} trials saved to {saved_path}"
+                                    )
 
-                        gest_str = ",".join(gesture_list)
-                        await broadcast({"x": norm_x, "y": norm_y,
-                                         "gesture": gest_str, "hand": handedness})
+                            gest_str = ",".join(gesture_list)
+                            await broadcast({"x": norm_x, "y": norm_y,
+                                             "gesture": gest_str, "hand": handedness})
 
-                        disp_label = ",".join(vigem_label)
-                        calculated_values['gestures'].append(disp_label)
-                        calculated_values['handedness'].append(handedness)
-                        calculated_values['wrist_coords'].append((norm_x, norm_y))
+                            disp_label = ",".join(vigem_label)
+                            calculated_values['gestures'].append(disp_label)
+                            calculated_values['handedness'].append(handedness)
+                            calculated_values['wrist_coords'].append((norm_x, norm_y))
 
-                        thumb, idx_tip = lm[4], lm[8]
-                        p_dist = math.sqrt((idx_tip.x - thumb.x)**2 + (idx_tip.y - thumb.y)**2)
-                        calculated_values['pinch_dists'].append(p_dist)
-                        calculated_values['pinch_speeds'].append(abs(p_dist - prev_pinch_dists[i]))
-                        prev_pinch_dists[i] = p_dist
+                            thumb, idx_tip = lm[4], lm[8]
+                            p_dist = math.sqrt((idx_tip.x - thumb.x)**2 + (idx_tip.y - thumb.y)**2)
+                            calculated_values['pinch_dists'].append(p_dist)
+                            calculated_values['pinch_speeds'].append(abs(p_dist - prev_pinch_dists[i]))
+                            prev_pinch_dists[i] = p_dist
 
-                else:
-                    vigem_output.release_all()
-                    prev_pinch_dists = []
-                    ema_state.clear()
+                    else:
+                        vigem_output.release_all()
+                        prev_pinch_dists = []
+                        ema_state.clear()
 
-                if visualise_mode:
-                    vis_lm = [hlp.landmark for hlp in (result.multi_hand_landmarks or [])]
-                    annotated = visualiser.draw_overlay(frame, vis_lm, calculated_values)
-                    cv2.imshow("MediaPipe Gesture Controller", annotated)
+                    if visualise_mode:
+                        vis_lm = [hlp.landmark for hlp in (result.multi_hand_landmarks or [])]
+                        annotated = visualiser.draw_overlay(frame, vis_lm, calculated_values)
+                        cv2.imshow("MediaPipe Gesture Controller", annotated)
 
-                await asyncio.sleep(0.001)
+                    await asyncio.sleep(0)
+            finally:
+                if latency_file_handle is not None:
+                    latency_file_handle.close()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="MediaPipe Gesture Controller")
