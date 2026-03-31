@@ -50,6 +50,9 @@ CONFIG = {
     "NEUTRAL_Y_OFFSET": 0.65,    # ⚠ TUNE THIS: read tilt_y at rest from --visualise overlay
     "EMA_ALPHA": 0.3,             # Smoothing factor (0=no update, 1=no smoothing)
     "DEAD_ZONE": 0.15,            # Applied in vigem_output, documented here for reference
+    "PREPROCESS_CONTRAST_ENABLED": False,  # Toggle linear contrast/brightness preprocessing
+    "PREPROCESS_ALPHA": 1,               # Gain term in O(x,y) = alpha*I(x,y) + beta
+    "PREPROCESS_BETA": 10,                 # Bias term in O(x,y) = alpha*I(x,y) + beta
     "PINCH_INDEX":  0.05,
     "PINCH_MIDDLE": 0.06,
     "PINCH_RING":   0.07,
@@ -375,6 +378,12 @@ async def main(
 
                     preprocess_t0 = time.perf_counter()
                     frame = cv2.flip(frame, 1)
+                    if CONFIG["PREPROCESS_CONTRAST_ENABLED"]:
+                        frame = cv2.convertScaleAbs(
+                            frame,
+                            alpha=CONFIG["PREPROCESS_ALPHA"],
+                            beta=CONFIG["PREPROCESS_BETA"],
+                        )
                     rgb   = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     rgb.flags.writeable = False
                     preprocess_t1 = time.perf_counter()
