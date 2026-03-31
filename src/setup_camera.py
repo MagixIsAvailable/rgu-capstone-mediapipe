@@ -5,7 +5,7 @@ Author: Michal Lazovy | RGU CM4134 Honours Capstone 2026
 Supervisor: Dr John N.A. Brown | Partner: James Hutton Institute, Aberdeen
 
 Purpose:
-Interactive camera selection utility for VisionInput. Iterates through available camera indices, displays a live preview for each, and saves the selected camera index to camera_config.txt for use by main.py. Run once on first installation or when the camera setup changes.
+Interactive camera selection utility for VisionInput. Iterates through available camera indices, displays a live preview for each, and saves the selected camera index plus an optional user label to camera_config.txt for use by main.py. Run once on first installation or when the camera setup changes.
 
 Dependencies:
 cv2
@@ -15,6 +15,7 @@ python src/setup_camera.py
 """
 import cv2
 import os
+import json
 
 # Get the absolute path of the directory containing this script
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -46,10 +47,22 @@ def main():
                 
                 key = cv2.waitKey(1) & 0xFF
                 if key == ord('y'):
+                    camera_label = input(
+                        "Enter a camera label (e.g., Logitech C920), or press Enter to use default: "
+                    ).strip()
+                    if not camera_label:
+                        camera_label = f"camera_index_{i}"
+
                     config_path = os.path.join(SCRIPT_DIR, "camera_config.txt")
+                    payload = {
+                        "camera_index": i,
+                        "camera_label": camera_label,
+                    }
                     with open(config_path, "w") as f:
-                        f.write(str(i))
-                    print(f"\n>>> SAVED CAMERA INDEX {i} to '{config_path}' <<<")
+                        json.dump(payload, f)
+                    print(
+                        f"\n>>> SAVED CAMERA INDEX {i} ({camera_label}) to '{config_path}' <<<"
+                    )
                     cap.release()
                     cv2.destroyAllWindows()
                     return

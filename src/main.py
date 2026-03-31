@@ -76,10 +76,21 @@ try:
     config_path = os.path.join(SCRIPT_DIR, "camera_config.txt")
     with open(config_path, "r") as f:
         content = f.read().strip()
-        CAMERA_INDEX = int(content) if content else 0
+        CAMERA_LABEL = f"camera_index_0"
         if not content:
+            CAMERA_INDEX = 0
             logging.warning("camera_config.txt is empty. Using default index 0.")
-    logging.info(f"Loading Camera Index {CAMERA_INDEX} from {config_path}...")
+        elif content.startswith("{"):
+            payload = json.loads(content)
+            CAMERA_INDEX = int(payload.get("camera_index", 0))
+            CAMERA_LABEL = payload.get("camera_label", f"camera_index_{CAMERA_INDEX}")
+        else:
+            # Backward compatibility: legacy config stored only the numeric index.
+            CAMERA_INDEX = int(content)
+            CAMERA_LABEL = f"camera_index_{CAMERA_INDEX}"
+    logging.info(
+        f"Loading Camera Index {CAMERA_INDEX} ({CAMERA_LABEL}) from {config_path}..."
+    )
 except FileNotFoundError:
     logging.error("Error: 'camera_config.txt' not found.")
     logging.error("Please run 'python src/setup_camera.py' first to select your camera.")
@@ -88,6 +99,11 @@ except FileNotFoundError:
 except ValueError:
     logging.error("Invalid camera index in camera_config.txt. Using default 0.")
     CAMERA_INDEX = 0
+    CAMERA_LABEL = "camera_index_0"
+except json.JSONDecodeError:
+    logging.error("Invalid JSON in camera_config.txt. Using default index 0.")
+    CAMERA_INDEX = 0
+    CAMERA_LABEL = "camera_index_0"
 
 # ----------------------------------------------------------------
 # WebSocket
@@ -262,6 +278,9 @@ async def main(visualise_mode=False, log_latency=False):
 
         print(f"FPS negotiated: {cap.get(cv2.CAP_PROP_FPS)}")
         print(f"Resolution: {cap.get(cv2.CAP_PROP_FRAME_WIDTH)}x{cap.get(cv2.CAP_PROP_FRAME_HEIGHT)}")
+        frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        camera_resolution = f"{frame_width}x{frame_height}"
 
         calibration_start = time.time()
         prev_frame_time   = time.time()
@@ -289,12 +308,17 @@ async def main(visualise_mode=False, log_latency=False):
             latency_path = latency_dir / f"latency_log_{session_file_stamp}.csv"
             if log_latency:
                 with latency_path.open("w", newline="") as f:
-                    csv.writer(f).writerow([
-                        "session_created_at",
+                    writer = csv.writer(f)
+                    # Write run metadata once to avoid duplicating static values per event row.
+                    writer.writerow(["session_created_at", session_created_at])
+                    writer.writerow(["camera_label", CAMERA_LABEL])
+                    writer.writerow(["camera_resolution", camera_resolution])
+                    writer.writerow([])
+                    writer.writerow([
                         "timestamp",
                         "gesture_label",
                         "hand",
-                        "latency_ms"
+                        "latency_ms",
                     ])
 
             while cap.isOpened():
@@ -402,7 +426,6 @@ async def main(visualise_mode=False, log_latency=False):
                             with latency_path.open("a", newline="") as f:
                                 writer = csv.writer(f)
                                 writer.writerow([
-                                    session_created_at,
                                     time.strftime("%H:%M:%S"),
                                     gest_str,
                                     handedness.lower(),
