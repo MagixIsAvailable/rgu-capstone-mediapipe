@@ -39,6 +39,7 @@ import websockets
 import json
 import math
 import contextlib
+from collections import deque
 
 # ----------------------------------------------------------------
 # CONFIG — all tunables in one place
@@ -266,6 +267,7 @@ async def main(
     log_latency=False,
     benchmark_seconds=0.0,
     benchmark_capture_only=False,
+    run_tag="",
 ):
     logging.info("Initializing MediaPipe Hands (Legacy Mode)...")
     with mp_hands.Hands(
@@ -291,6 +293,17 @@ async def main(
         frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         camera_resolution = f"{frame_width}x{frame_height}"
+        requested_fps = 60
+        requested_resolution = "1920x1080"
+        negotiated_fps = cap.get(cv2.CAP_PROP_FPS)
+        backend_id = int(cap.get(cv2.CAP_PROP_BACKEND))
+        backend_name = "unknown"
+        if hasattr(cv2, "videoio_registry"):
+            with contextlib.suppress(Exception):
+                backend_name = cv2.videoio_registry.getBackendName(backend_id)
+        raw_fourcc = int(cap.get(cv2.CAP_PROP_FOURCC))
+        decoded_fourcc = "".join(chr((raw_fourcc >> (8 * i)) & 0xFF) for i in range(4)).strip("\x00")
+        negotiated_fourcc = decoded_fourcc if decoded_fourcc.isprintable() and decoded_fourcc else "UNKNOWN"
 
         benchmark_enabled = benchmark_seconds > 0
         benchmark_start = time.perf_counter()
@@ -312,6 +325,9 @@ async def main(
         calibration_start = time.time()
         prev_frame_time   = time.time()
         prev_pinch_dists  = []
+        frame_index = 0
+        read_failed_count = 0
+        frame_time_window = deque()
 
         # EMA state keyed by hand index — fixes cross-hand bleed
         ema_state = {}
@@ -342,19 +358,39 @@ async def main(
                 latency_writer.writerow(["session_created_at", session_created_at])
                 latency_writer.writerow(["camera_label", CAMERA_LABEL])
                 latency_writer.writerow(["camera_resolution", camera_resolution])
+                latency_writer.writerow(["run_tag", run_tag])
+                latency_writer.writerow(["visualise_mode", str(visualise_mode).lower()])
+                latency_writer.writerow(["websocket_enabled", str(WEBSOCKET_ENABLED).lower()])
+                latency_writer.writerow(["backend", f"{backend_name} ({backend_id})"])
+                latency_writer.writerow(["requested_resolution", requested_resolution])
+                latency_writer.writerow(["requested_fps", requested_fps])
+                latency_writer.writerow(["negotiated_fps", f"{negotiated_fps:.2f}"])
+                latency_writer.writerow(["negotiated_fourcc", negotiated_fourcc or "unknown"])
                 latency_writer.writerow([])
                 latency_writer.writerow([
                     "timestamp",
+                    "frame_index",
                     "gesture_label",
                     "hand",
+                    "hand_confidence",
+                    "hand_count",
+                    "is_non_neutral",
                     "latency_ms",
                     "norm_x",
                     "norm_y",
+                    "fps_rolling_1s",
+                    "capture_ms",
+                    "preprocess_ms",
+                    "mediapipe_ms",
+                    "output_ms",
+                    "loop_ms",
+                    "read_failed_count",
                 ])
 
             try:
                 while cap.isOpened():
                     frame_loop_t0 = time.perf_counter()
+                    frame_index += 1
                     frame_t_start = None
                     if log_latency and latency_count < CONFIG["latency_trials"]:
                         # Measure end-to-end latency from frame capture through ViGEm output.
@@ -365,6 +401,7 @@ async def main(
                     capture_t1 = time.perf_counter()
                     benchmark_stats["capture_s"] += (capture_t1 - capture_t0)
                     if not ret:
+                        read_failed_count += 1
                         logging.error("Failed to receive frame.")
                         break
                     if visualise_mode and (cv2.waitKey(1) & 0xFF == ord('q')):
@@ -396,11 +433,22 @@ async def main(
                     mediapipe_t1 = time.perf_counter()
                     benchmark_stats["mediapipe_s"] += (mediapipe_t1 - mediapipe_t0)
                     rgb.flags.writeable = True
+                    capture_ms_frame = (capture_t1 - capture_t0) * 1000.0
+                    preprocess_ms_frame = (preprocess_t1 - preprocess_t0) * 1000.0
+                    mediapipe_ms_frame = (mediapipe_t1 - mediapipe_t0) * 1000.0
 
                     now = time.time()
                     dt  = now - prev_frame_time
                     fps = 1.0 / dt if dt > 0 else 0
                     prev_frame_time = now
+                    frame_time_window.append(now)
+                    while frame_time_window and (now - frame_time_window[0]) > 1.0:
+                        frame_time_window.popleft()
+                    if len(frame_time_window) >= 2:
+                        rolling_window_s = frame_time_window[-1] - frame_time_window[0]
+                        fps_rolling_1s = ((len(frame_time_window) - 1) / rolling_window_s) if rolling_window_s > 0 else fps
+                    else:
+                        fps_rolling_1s = fps
 
                     elapsed = now - calibration_start
                     if benchmark_enabled:
@@ -417,6 +465,7 @@ async def main(
                     }
 
                     output_t0 = time.perf_counter()
+                    pending_latency_rows = []
                     if result.multi_hand_landmarks and not is_calibrating:
                         # Align pinch history length to detected hand count
                         n_hands = len(result.multi_hand_landmarks)
@@ -433,8 +482,10 @@ async def main(
                             elif lbl == "Right": right_lms = lm
 
                         for i, hlp in enumerate(result.multi_hand_landmarks):
-                            lm         = hlp.landmark
-                            handedness = result.multi_handedness[i].classification[0].label
+                            lm = hlp.landmark
+                            hand_info = result.multi_handedness[i].classification[0]
+                            handedness = hand_info.label
+                            hand_confidence = hand_info.score
 
                             gesture_list = detect_gesture(lm, handedness)
                             vigem_label  = map_to_vigem(gesture_list, handedness)
@@ -484,13 +535,21 @@ async def main(
                                 t_end = time.perf_counter()
                                 latency_ms = (t_end - frame_t_start) * 1000
                                 gest_str = ",".join(gesture_list)
-                                latency_writer.writerow([
+                                pending_latency_rows.append([
                                     time.strftime("%H:%M:%S"),
+                                    frame_index,
                                     gest_str,
                                     handedness.lower(),
+                                    f"{hand_confidence:.3f}",
+                                    len(result.multi_hand_landmarks),
+                                    str(is_non_neutral).lower(),
                                     f"{latency_ms:.2f}",
                                     f"{norm_x:.3f}",
                                     f"{norm_y:.3f}",
+                                    f"{fps_rolling_1s:.2f}",
+                                    f"{capture_ms_frame:.2f}",
+                                    f"{preprocess_ms_frame:.2f}",
+                                    f"{mediapipe_ms_frame:.2f}",
                                 ])
 
                                 latency_count += 1
@@ -521,6 +580,15 @@ async def main(
                         ema_state.clear()
                     output_t1 = time.perf_counter()
                     benchmark_stats["output_s"] += (output_t1 - output_t0)
+                    output_ms_frame = (output_t1 - output_t0) * 1000.0
+                    loop_ms_frame = (time.perf_counter() - frame_loop_t0) * 1000.0
+                    if pending_latency_rows and latency_writer is not None:
+                        for base_row in pending_latency_rows:
+                            latency_writer.writerow(base_row + [
+                                f"{output_ms_frame:.2f}",
+                                f"{loop_ms_frame:.2f}",
+                                read_failed_count,
+                            ])
 
                     if visualise_mode:
                         vis_lm = [hlp.landmark for hlp in (result.multi_hand_landmarks or [])]
@@ -554,30 +622,44 @@ async def main(
                     benchmark_dir = project_root / CONFIG["benchmark_log_dir"]
                     benchmark_dir.mkdir(parents=True, exist_ok=True)
                     benchmark_path = benchmark_dir / CONFIG["benchmark_log_file"]
+                    benchmark_header = [
+                        "timestamp",
+                        "run_tag",
+                        "camera_label",
+                        "camera_resolution",
+                        "backend",
+                        "negotiated_fourcc",
+                        "mode",
+                        "duration_s",
+                        "frames",
+                        "fps",
+                        "capture_ms_per_frame",
+                        "preprocess_ms_per_frame",
+                        "mediapipe_ms_per_frame",
+                        "output_ms_per_frame",
+                        "loop_total_ms_per_frame",
+                    ]
+                    if benchmark_path.exists() and benchmark_path.stat().st_size > 0:
+                        with benchmark_path.open("r", newline="") as f:
+                            existing_header = f.readline().strip()
+                        expected_header = ",".join(benchmark_header)
+                        if existing_header != expected_header:
+                            benchmark_path = benchmark_dir / "benchmark_runs_v2.csv"
+
                     benchmark_file_exists = benchmark_path.exists() and benchmark_path.stat().st_size > 0
 
                     with benchmark_path.open("a", newline="") as f:
                         writer = csv.writer(f)
                         if not benchmark_file_exists:
-                            writer.writerow([
-                                "timestamp",
-                                "camera_label",
-                                "camera_resolution",
-                                "mode",
-                                "duration_s",
-                                "frames",
-                                "fps",
-                                "capture_ms_per_frame",
-                                "preprocess_ms_per_frame",
-                                "mediapipe_ms_per_frame",
-                                "output_ms_per_frame",
-                                "loop_total_ms_per_frame",
-                            ])
+                            writer.writerow(benchmark_header)
 
                         writer.writerow([
                             time.strftime("%Y-%m-%d %H:%M:%S"),
+                            run_tag,
                             CAMERA_LABEL,
                             camera_resolution,
+                            f"{backend_name} ({backend_id})",
+                            negotiated_fourcc or "unknown",
                             "capture-only" if benchmark_capture_only else "full-pipeline",
                             f"{runtime_s:.2f}",
                             frames,
@@ -612,6 +694,8 @@ if __name__ == "__main__":
                         help="Run benchmark for N seconds and print timing summary")
     parser.add_argument("--benchmark-capture-only", action="store_true",
                         help="Benchmark capture only (skip MediaPipe and output processing)")
+    parser.add_argument("--run-tag", type=str, default="",
+                        help="Optional run label for logs (e.g. native, camo, low-light)")
     args = parser.parse_args()
     try:
         asyncio.run(main(
@@ -619,6 +703,7 @@ if __name__ == "__main__":
             log_latency=(CONFIG["log_latency"] or args.log_latency),
             benchmark_seconds=args.benchmark_seconds,
             benchmark_capture_only=args.benchmark_capture_only,
+            run_tag=args.run_tag,
         ))
     except KeyboardInterrupt:
         logging.info("Program stopped by user.")
