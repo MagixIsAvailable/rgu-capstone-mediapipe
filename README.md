@@ -76,6 +76,10 @@ VisionInput is designed to run on standard hardware.
 ```
    Press `y` to select a camera when the preview looks correct.
 
+   The generated `src/camera_config.txt` supports both formats:
+   - JSON (preferred): `{"camera_index": 0, "camera_label": "your_camera_name"}`
+   - Legacy numeric index only: `0`
+
    ![Photo: camera option](https://github.com/user-attachments/assets/6c5324ae-356c-4529-b87a-0be0e72a47b2)
 
 2. **Launch the controller**
@@ -95,6 +99,21 @@ VisionInput is designed to run on standard hardware.
    To run both overlay and latency logging:
 ```powershell
    python src/main.py --visualise --log-latency
+```
+
+   To run a timed benchmark (full pipeline):
+```powershell
+   python src/main.py --benchmark-seconds 30
+```
+
+   To benchmark camera capture only:
+```powershell
+   python src/main.py --benchmark-seconds 30 --benchmark-capture-only
+```
+
+   To tag a run for later analysis:
+```powershell
+   python src/main.py --benchmark-seconds 30 --run-tag native
 ```
 
 ---
@@ -181,11 +200,65 @@ Edit the `CONFIG` dictionary at the top of `src/main.py` to adjust behaviour:
 ### Latency Logging
 
 - Enable with `--log-latency`.
-- Stops automatically after `latency_trials` samples (default: 50).
+- Stops automatically after `latency_trials` samples (default: 200).
 - Output directory: `logs/latency/`
 - File format per run: `latency_log_YYYYMMDD_HHMMSS.csv`
-- CSV columns: `session_created_at`, `timestamp`, `gesture_label`, `hand`, `latency_ms`
+- Metadata header rows (written once per session):
+   - `session_created_at`
+   - `camera_label`
+   - `camera_resolution`
+   - `run_tag`
+   - `visualise_mode`
+   - `websocket_enabled`
+   - `backend`
+   - `requested_resolution`
+   - `requested_fps`
+   - `negotiated_fps`
+   - `negotiated_fourcc`
+- Event table columns:
+   - `timestamp`
+   - `frame_index`
+   - `gesture_label`
+   - `hand`
+   - `hand_confidence`
+   - `hand_count`
+   - `is_non_neutral`
+   - `latency_ms`
+   - `norm_x`
+   - `norm_y`
+   - `fps_rolling_1s`
+   - `capture_ms`
+   - `preprocess_ms`
+   - `mediapipe_ms`
+   - `output_ms`
+   - `loop_ms`
+   - `read_failed_count`
 - Completion message prints the full absolute path of the saved file.
+
+### Benchmark Logging
+
+- Enable benchmark mode with `--benchmark-seconds N`.
+- Optional `--benchmark-capture-only` measures camera capture without MediaPipe/output stages.
+- Optional `--run-tag` adds an experiment label to each benchmark row.
+- Output directory: `logs/benchmark/`
+- Default file: `benchmark_runs.csv`
+- If an existing header does not match the current schema, output falls back to `benchmark_runs_v2.csv`.
+- Benchmark CSV columns:
+   - `timestamp`
+   - `run_tag`
+   - `camera_label`
+   - `camera_resolution`
+   - `backend`
+   - `negotiated_fourcc`
+   - `mode`
+   - `duration_s`
+   - `frames`
+   - `fps`
+   - `capture_ms_per_frame`
+   - `preprocess_ms_per_frame`
+   - `mediapipe_ms_per_frame`
+   - `output_ms_per_frame`
+   - `loop_total_ms_per_frame`
 
 ### Web Interface (Experimental)
 A 360° A-Frame viewer is included in `web/index.html`. To enable:
