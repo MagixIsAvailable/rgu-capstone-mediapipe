@@ -86,8 +86,15 @@ def apply_gesture(gesture_label: str, hand: str, wrist_x: float = 0.0, wrist_y: 
                 gp.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_RIGHT)
 
     elif hand_side == "RIGHT":
-        # Clear previous buttons for this hand
-        gp.report.wButtons = 0
+        # Clear only right-hand mapped buttons so left-hand D-pad state is preserved.
+        gp.release_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_A)
+        gp.release_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_B)
+        gp.release_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_X)
+        gp.release_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_Y)
+        gp.release_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_LEFT_SHOULDER)
+        gp.release_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_RIGHT_SHOULDER)
+        gp.release_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_BACK)
+        gp.release_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_START)
         # Reset triggers
         gp.right_trigger_float(value_float=0.0)
         gp.left_trigger_float(value_float=0.0)
