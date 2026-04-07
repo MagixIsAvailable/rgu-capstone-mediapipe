@@ -21,7 +21,7 @@ Key Files:
 - config.py: All configuration values (EMA_ALPHA, DEAD_ZONE, etc.)
 - vigem_output.py: ViGEm output layer
 - setup_camera.py: Camera selection utility
-- gesture_map.json: Gesture-to-controller mapping (currently loaded but unused - see TODO)
+- gesture_map.json: Gesture-to-controller mapping (runtime source of truth)
 - visualiser.py: Debug overlay (--visualise flag)
 
 Author: Michal Lazovy
@@ -92,11 +92,7 @@ from config import (
     INTER_HAND_NEUTRAL_EPSILON,
     ANGLE_NORMALIZATION,
 )
-from gesture_mapping import map_right_hand_gesture, map_left_hand_gesture
-
-# TODO: gesture_map.json is loaded but not currently used for runtime mapping.
-# Currently using hardcoded gesture_mapping.py functions below.
-# Refactor post-Session 3 to use JSON for more flexible gesture definitions.
+from gesture_mapping import map_hand_actions
 
 import vigem_output
 import visualiser
@@ -282,26 +278,12 @@ def map_to_vigem(gesture_list: list[str], handedness: str) -> list[str]:
         - Chapter 3, Section 3.4 Mapping Layer
         - Guiard, Y. (1987). Asymmetric division of labor in human skilled bimanual action."""
     if handedness == "Right":
-        gests = set(gesture_list)
-        # Combo detection (priority) — two-finger holds yield discrete actions
-        if "index_bent" in gests and "middle_bent" in gests:
-            return [map_right_hand_gesture("index_bent+middle_bent")]  # BUTTON_7
-        if "ring_bent" in gests and "pinky_bent" in gests:
-            return [map_right_hand_gesture("ring_bent+pinky_bent")]    # BUTTON_8
+        # Right-hand mappings are fully data-driven via gesture_map.json.
+        return map_hand_actions("Right", gesture_list)
 
-        # Otherwise map each right-hand gesture label via JSON mapping (gesture_map.json).
-        res = [map_right_hand_gesture(g) for g in gesture_list]
-        return res if res else ["NEUTRAL"]
-
-    # Left-hand labels are emitted as left_* by detector; normalize before lookup.
-    # Left hand uses continuous analog axes (joystick) + D-pad discrete actions.
-    mapped = []
-    for g in gesture_list:
-        normalized = g.replace("left_", "")
-        action = map_left_hand_gesture(normalized)
-        if action:
-            mapped.append(action)
-    return mapped if mapped else ["NEUTRAL"]
+    # Left-hand detector labels are emitted as left_*; normalize before JSON lookup.
+    normalized = [g.replace("left_", "") for g in gesture_list]
+    return map_hand_actions("Left", normalized)
 
 # =============================================================================
 # SECTION 5: FRAME-SYNCHRONOUS MAIN LOOP & OUTPUT

@@ -9,12 +9,16 @@
             "middle_pinch": "SHOULDER_RIGHT",
             "ring_pinch": "TRIGGER_LT",
             "pinky_pinch": "TRIGGER_RT",
-            "OPEN_PALM": "NEUTRAL"
+            "open_palm": "NEUTRAL"
         },
         "combos": {
             "index_bent+middle_bent": "BUTTON_BACK",
             "ring_bent+pinky_bent": "BUTTON_START"
-        }
+        },
+        "combo_priority": [
+            "index_bent+middle_bent",
+            "ring_bent+pinky_bent"
+        ]
     },
     "left_hand": {
         "gestures": {
@@ -22,6 +26,8 @@
             "middle_bent": "DPAD_DOWN",
             "ring_bent": "DPAD_LEFT",
             "pinky_bent": "DPAD_RIGHT"
-        }
+        },
+        "combos": {},
+        "combo_priority": []
     }
 }
