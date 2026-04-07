@@ -1,30 +1,27 @@
 {
-    "LEFT": {
-        "left_index_bent": "DPAD_UP",
-        "left_middle_bent": "DPAD_DOWN",
-        "left_ring_bent": "DPAD_LEFT",
-        "left_pinky_bent": "DPAD_RIGHT",
-        "SWIPE_RIGHT": "JOYSTICK_RIGHT",
-        "SWIPE_LEFT": "JOYSTICK_LEFT",
-        "SWIPE_UP": "JOYSTICK_UP",
-        "SWIPE_DOWN": "JOYSTICK_DOWN",
-        "OPEN_PALM": "JOYSTICK_CENTER",
-        "CLOSED_FIST": "JOYSTICK_FORWARD_HALF"
+    "right_hand": {
+        "gestures": {
+            "index_bent": "BUTTON_A",
+            "middle_bent": "BUTTON_B",
+            "ring_bent": "BUTTON_X",
+            "pinky_bent": "BUTTON_Y",
+            "index_pinch": "SHOULDER_LEFT",
+            "middle_pinch": "SHOULDER_RIGHT",
+            "ring_pinch": "TRIGGER_LT",
+            "pinky_pinch": "TRIGGER_RT",
+            "OPEN_PALM": "NEUTRAL"
+        },
+        "combos": {
+            "index_bent+middle_bent": "BUTTON_BACK",
+            "ring_bent+pinky_bent": "BUTTON_START"
+        }
     },
-    "RIGHT": {
-        "index_pinch": "SHOULDER_RIGHT",
-        "middle_pinch": "SHOULDER_LEFT",
-        "ring_pinch": "TRIGGER_RIGHT",
-        "pinky_pinch": "TRIGGER_LEFT",
-        "index_bent": "BUTTON_A",
-        "middle_bent": "BUTTON_B",
-        "ring_bent": "BUTTON_X",
-        "pinky_bent": "BUTTON_Y",
-        "PINCH": "BUTTON_A",
-        "THUMB_UP": "BUTTON_Y",
-        "THUMB_DOWN": "BUTTON_B",
-        "POINTING_UP": "BUTTON_X",
-        "VICTORY": "SHOULDER_RIGHT",
-        "OPEN_PALM": "NONE"
+    "left_hand": {
+        "gestures": {
+            "index_bent": "DPAD_UP",
+            "middle_bent": "DPAD_DOWN",
+            "ring_bent": "DPAD_LEFT",
+            "pinky_bent": "DPAD_RIGHT"
+        }
     }
 }

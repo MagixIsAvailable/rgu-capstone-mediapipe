@@ -20,7 +20,6 @@ import csv
 import argparse
 import logging
 from unittest.mock import MagicMock
-import numpy as np
 import os
 from pathlib import Path
 
@@ -40,34 +39,39 @@ import json
 import math
 import contextlib
 from collections import deque
-
-# ----------------------------------------------------------------
-# CONFIG — all tunables in one place
-# ----------------------------------------------------------------
-CONFIG = {
-    "WEBSOCKET_ENABLED": False,
-    "SENSITIVITY": 2.0,          # Interaction box size (higher = less movement required)
-    "TILT_GAIN": 4.0,             # ~15° tilt = full stick input
-    "NEUTRAL_Y_OFFSET": 0.65,    # ⚠ TUNE THIS: read tilt_y at rest from --visualise overlay
-    "EMA_ALPHA": 0.3,             # Smoothing factor (0=no update, 1=no smoothing)
-    "DEAD_ZONE": 0.15,            # Applied in vigem_output, documented here for reference
-    "PREPROCESS_CONTRAST_ENABLED": False,  # Toggle linear contrast/brightness preprocessing
-    "PREPROCESS_ALPHA": 1,               # Gain term in O(x,y) = alpha*I(x,y) + beta
-    "PREPROCESS_BETA": 10,                 # Bias term in O(x,y) = alpha*I(x,y) + beta
-    "PINCH_INDEX":  0.05,
-    "PINCH_MIDDLE": 0.06,
-    "PINCH_RING":   0.07,
-    "PINCH_PINKY":  0.08,
-    "CALIBRATION_DURATION": 3.0, # Seconds before controller output is enabled
-    "log_latency": False,         # Enable with --log-latency flag
-    "latency_trials": 200,         # Stop logging after N trials
-    "latency_log_dir": "logs/latency",
-    "latency_log_file": "latency_log.csv",
-    "benchmark_log_dir": "logs/benchmark",
-    "benchmark_log_file": "benchmark_runs.csv",
-}
-
-WEBSOCKET_ENABLED = CONFIG["WEBSOCKET_ENABLED"]
+from config import (
+    WEBSOCKET_ENABLED,
+    WEBSOCKET_HOST,
+    WEBSOCKET_PORT,
+    MAX_WEBSOCKET_CLIENTS,
+    SENSITIVITY,
+    TILT_GAIN,
+    NEUTRAL_Y_OFFSET,
+    EMA_ALPHA,
+    DEAD_ZONE,
+    PREPROCESS_CONTRAST_ENABLED,
+    PREPROCESS_ALPHA,
+    PREPROCESS_BETA,
+    PINCH_INDEX,
+    PINCH_MIDDLE,
+    PINCH_RING,
+    PINCH_PINKY,
+    CALIBRATION_DURATION,
+    LOG_LATENCY_DEFAULT,
+    LATENCY_TRIALS,
+    LATENCY_LOG_DIR,
+    LATENCY_LOG_FILE,
+    BENCHMARK_LOG_DIR,
+    BENCHMARK_LOG_FILE,
+    DETECTION_CONFIDENCE,
+    TRACKING_CONFIDENCE,
+    CAMERA_REQUEST_FPS,
+    CAMERA_REQUEST_WIDTH,
+    CAMERA_REQUEST_HEIGHT,
+    INTER_HAND_NEUTRAL_EPSILON,
+    ANGLE_NORMALIZATION,
+)
+from gesture_mapping import map_right_hand_gesture, map_left_hand_gesture
 
 import vigem_output
 import visualiser
@@ -117,7 +121,7 @@ except json.JSONDecodeError:
 connected_clients = set()
 
 async def websocket_handler(websocket):
-    if len(connected_clients) >= 5:
+    if len(connected_clients) >= MAX_WEBSOCKET_CLIENTS:
         logging.warning(f"Rejected connection from {websocket.remote_address}: too many clients")
         await websocket.close()
         return
@@ -143,40 +147,6 @@ async def broadcast(message_dict):
     connected_clients.difference_update(dead)
 
 # ----------------------------------------------------------------
-# Drawing utilities
-# ----------------------------------------------------------------
-HAND_CONNECTIONS = [
-    (0,1),(1,2),(2,3),(3,4),(0,5),(5,6),(6,7),(7,8),
-    (5,9),(9,10),(10,11),(11,12),(9,13),(13,14),(14,15),(15,16),
-    (13,17),(17,18),(18,19),(19,20),(0,17)
-]
-
-def draw_landmarks_on_image(rgb_image, detection_result):
-    hand_landmarks_list = detection_result.multi_hand_landmarks or []
-    annotated = np.copy(rgb_image)
-    annotated = cv2.cvtColor(annotated, cv2.COLOR_RGB2BGR)
-    h, w, _ = annotated.shape
-    half = (1.0 / CONFIG["SENSITIVITY"]) / 2
-    x1, y1 = int((0.5 - half) * w), int((0.5 - half) * h)
-    x2, y2 = int((0.5 + half) * w), int((0.5 + half) * h)
-    cv2.rectangle(annotated, (x1, y1), (x2, y2), (0, 255, 255), 2)
-    for hlp in hand_landmarks_list:
-        lm = hlp.landmark
-        for l in lm:
-            cv2.circle(annotated, (int(l.x * w), int(l.y * h)), 5, (0, 255, 0), -1)
-        for s, e in HAND_CONNECTIONS:
-            cv2.line(annotated,
-                     (int(lm[s].x * w), int(lm[s].y * h)),
-                     (int(lm[e].x * w), int(lm[e].y * h)),
-                     (0, 255, 0), 2)
-        wrist, mcp = lm[0], lm[9]
-        cv2.arrowedLine(annotated,
-                        (int(wrist.x * w), int(wrist.y * h)),
-                        (int(mcp.x * w),   int(mcp.y * h)),
-                        (255, 255, 0), 3, tipLength=0.3)
-    return annotated
-
-# ----------------------------------------------------------------
 # Gesture detection — always returns list[str]
 # ----------------------------------------------------------------
 def detect_gesture(landmarks, handedness="Left") -> list[str]:
@@ -191,10 +161,10 @@ def detect_gesture(landmarks, handedness="Left") -> list[str]:
     if handedness == "Right":
         thumb = landmarks[4]
         # Layer B: pinch (priority — mutually exclusive)
-        if dist(landmarks[8],  thumb) < CONFIG["PINCH_INDEX"]:  return ["index_pinch"]
-        if dist(landmarks[12], thumb) < CONFIG["PINCH_MIDDLE"]: return ["middle_pinch"]
-        if dist(landmarks[16], thumb) < CONFIG["PINCH_RING"]:   return ["ring_pinch"]
-        if dist(landmarks[20], thumb) < CONFIG["PINCH_PINKY"]:  return ["pinky_pinch"]
+        if dist(landmarks[8],  thumb) < PINCH_INDEX:  return ["index_pinch"]
+        if dist(landmarks[12], thumb) < PINCH_MIDDLE: return ["middle_pinch"]
+        if dist(landmarks[16], thumb) < PINCH_RING:   return ["ring_pinch"]
+        if dist(landmarks[20], thumb) < PINCH_PINKY:  return ["pinky_pinch"]
         # Layer A: individual bends (combinable)
         bends = []
         if landmarks[8].y  > landmarks[6].y:  bends.append("index_bent")
@@ -213,51 +183,25 @@ def detect_gesture(landmarks, handedness="Left") -> list[str]:
     
     return bends if bends else ["OPEN_PALM"]
 
-# ----------------------------------------------------------------
-# Gesture → ViGEm label mapping
-# ----------------------------------------------------------------
-_LEFT_GESTURE_MAP = {
-    "left_index_bent":   "DPAD_UP",
-    "left_middle_bent":  "DPAD_DOWN",
-    "left_ring_bent":    "DPAD_LEFT",
-    "left_pinky_bent":   "DPAD_RIGHT",
-    "select":  "PINCH",
-    "fist":    "CLOSED_FIST",
-    "open":    "OPEN_PALM",
-    "point":   "POINTING_UP",
-    "victory": "VICTORY",
-    "thumb_up":"THUMB_UP",
-    "right":   "SWIPE_RIGHT",
-    "left":    "SWIPE_LEFT",
-    "forward": "SWIPE_UP",
-    "back":    "SWIPE_DOWN",
-}
-
 def map_to_vigem(gesture_list: list[str], handedness: str) -> list[str]:
     if handedness == "Right":
         gests = set(gesture_list)
         # Combo detection (priority)
         if "index_bent" in gests and "middle_bent" in gests:
-            return ["BUTTON_7"]
-        if "index_bent" in gests and "ring_bent" in gests:
-            return ["BUTTON_8"]
-        
-        # Single mapping
-        mapping = {
-            "index_bent":   "BUTTON_1",
-            "middle_bent":  "BUTTON_2",
-            "ring_bent":    "BUTTON_3",
-            "pinky_bent":   "BUTTON_4",
-            "index_pinch":  "BUTTON_5",
-            "middle_pinch": "BUTTON_6",
-            "ring_pinch":   "TRIGGER_LT",
-            "pinky_pinch":  "TRIGGER_RT",
-            "OPEN_PALM":    "NEUTRAL"
-        }
-        res = [mapping[g] for g in gesture_list if g in mapping]
+            return [map_right_hand_gesture("index_bent+middle_bent")]
+        if "ring_bent" in gests and "pinky_bent" in gests:
+            return [map_right_hand_gesture("ring_bent+pinky_bent")]
+
+        res = [map_right_hand_gesture(g) for g in gesture_list]
         return res if res else ["NEUTRAL"]
-        
-    return [_LEFT_GESTURE_MAP.get(g, "OPEN_PALM") for g in gesture_list]
+
+    mapped = []
+    for g in gesture_list:
+        normalized = g.replace("left_", "")
+        action = map_left_hand_gesture(normalized)
+        if action:
+            mapped.append(action)
+    return mapped if mapped else ["NEUTRAL"]
 
 # ----------------------------------------------------------------
 # Main loop (async)
@@ -272,16 +216,16 @@ async def main(
     logging.info("Initializing MediaPipe Hands (Legacy Mode)...")
     with mp_hands.Hands(
         model_complexity=0,
-        min_detection_confidence=0.5,
-        min_tracking_confidence=0.5,
+        min_detection_confidence=DETECTION_CONFIDENCE,
+        min_tracking_confidence=TRACKING_CONFIDENCE,
         max_num_hands=2
     ) as detector:
         cap = cv2.VideoCapture(CAMERA_INDEX)
         # Request 60 FPS (many webcams require MJPG for >30fps at high res)
         cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
-        cap.set(cv2.CAP_PROP_FPS, 60)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+        cap.set(cv2.CAP_PROP_FPS, CAMERA_REQUEST_FPS)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_REQUEST_WIDTH)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_REQUEST_HEIGHT)
         if not cap.isOpened():
             logging.error("Run 'python src/setup_camera.py' to fix this.")
             input("Press Enter to exit...")
@@ -293,8 +237,8 @@ async def main(
         frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         camera_resolution = f"{frame_width}x{frame_height}"
-        requested_fps = 60
-        requested_resolution = "1920x1080"
+        requested_fps = CAMERA_REQUEST_FPS
+        requested_resolution = f"{CAMERA_REQUEST_WIDTH}x{CAMERA_REQUEST_HEIGHT}"
         negotiated_fps = cap.get(cv2.CAP_PROP_FPS)
         backend_id = int(cap.get(cv2.CAP_PROP_BACKEND))
         backend_name = "unknown"
@@ -333,18 +277,18 @@ async def main(
         ema_state = {}
 
         server_cm = (
-            websockets.serve(websocket_handler, "localhost", 8765)
+            websockets.serve(websocket_handler, WEBSOCKET_HOST, WEBSOCKET_PORT)
             if WEBSOCKET_ENABLED else contextlib.nullcontext()
         )
 
         async with server_cm:
             if WEBSOCKET_ENABLED:
-                logging.info("WebSocket server running on ws://localhost:8765")
+                logging.info(f"WebSocket server running on ws://{WEBSOCKET_HOST}:{WEBSOCKET_PORT}")
             logging.info("Camera running. Press 'q' to quit.")
 
             latency_count = 0
             project_root = Path(SCRIPT_DIR).parent
-            latency_dir = project_root / CONFIG["latency_log_dir"]
+            latency_dir = project_root / LATENCY_LOG_DIR
             latency_dir.mkdir(parents=True, exist_ok=True)
             session_created_at = time.strftime("%Y-%m-%d %H:%M:%S")
             session_file_stamp = time.strftime("%Y%m%d_%H%M%S")
@@ -392,7 +336,7 @@ async def main(
                     frame_loop_t0 = time.perf_counter()
                     frame_index += 1
                     frame_t_start = None
-                    if log_latency and latency_count < CONFIG["latency_trials"]:
+                    if log_latency and latency_count < LATENCY_TRIALS:
                         # Measure end-to-end latency from frame capture through ViGEm output.
                         frame_t_start = time.perf_counter()
 
@@ -417,11 +361,11 @@ async def main(
 
                     preprocess_t0 = time.perf_counter()
                     frame = cv2.flip(frame, 1)
-                    if CONFIG["PREPROCESS_CONTRAST_ENABLED"]:
+                    if PREPROCESS_CONTRAST_ENABLED:
                         frame = cv2.convertScaleAbs(
                             frame,
-                            alpha=CONFIG["PREPROCESS_ALPHA"],
-                            beta=CONFIG["PREPROCESS_BETA"],
+                            alpha=PREPROCESS_ALPHA,
+                            beta=PREPROCESS_BETA,
                         )
                     rgb   = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     rgb.flags.writeable = False
@@ -453,13 +397,13 @@ async def main(
                     elapsed = now - calibration_start
                     if benchmark_enabled:
                         # Benchmark mode should measure steady-state processing, not startup calibration delay.
-                        elapsed = CONFIG["CALIBRATION_DURATION"]
-                    is_calibrating = elapsed < CONFIG["CALIBRATION_DURATION"]
+                        elapsed = CALIBRATION_DURATION
+                    is_calibrating = elapsed < CALIBRATION_DURATION
 
                     calculated_values = {
                         'fps': fps,
                         'calibration_status': "calibrating" if is_calibrating else "calibrated",
-                        'calibration_time_remain': max(0, CONFIG["CALIBRATION_DURATION"] - elapsed),
+                        'calibration_time_remain': max(0, CALIBRATION_DURATION - elapsed),
                         'gestures': [], 'handedness': [],
                         'pinch_dists': [], 'pinch_speeds': [], 'wrist_coords': []
                     }
@@ -495,7 +439,7 @@ async def main(
                             mcp    = lm[9]
                             h_size = math.sqrt((mcp.x - wrist.x)**2 + (mcp.y - wrist.y)**2)
                             tilt_x = (mcp.x - wrist.x) / (h_size + 1e-6)
-                            norm_x = tilt_x * CONFIG["TILT_GAIN"]
+                            norm_x = tilt_x * TILT_GAIN
 
                             # Joystick Y: inter-hand angle (left hand) or tilt fallback
                             if handedness == "Left" and right_lms:
@@ -503,19 +447,18 @@ async def main(
                                 dx = r_w.x - l_w.x
                                 dy = r_w.y - l_w.y
                                 
-                                if abs(dx) < 0.05 and abs(dy) < 0.05:
+                                if abs(dx) < INTER_HAND_NEUTRAL_EPSILON and abs(dy) < INTER_HAND_NEUTRAL_EPSILON:
                                     norm_y = 0.0
                                 else:
                                     angle = math.atan2(dy, dx)
-                                    # Sensitivity: Normalize against ~36 degrees (pi/5)
-                                    norm_y = -(angle / (math.pi / 5))
+                                    norm_y = -(angle / ANGLE_NORMALIZATION)
                             else:
                                 tilt_y = (wrist.y - mcp.y) / (h_size + 1e-6)
-                                norm_y = -(tilt_y - CONFIG["NEUTRAL_Y_OFFSET"]) * CONFIG["TILT_GAIN"]
+                                norm_y = -(tilt_y - NEUTRAL_Y_OFFSET) * TILT_GAIN
 
                             # Per-hand EMA (fixes shared-state bug)
                             prev = ema_state.get(i, (0.0, 0.0))
-                            a    = CONFIG["EMA_ALPHA"]
+                            a    = EMA_ALPHA
                             norm_x = a * norm_x + (1 - a) * prev[0]
                             norm_y = a * norm_y + (1 - a) * prev[1]
                             ema_state[i] = (norm_x, norm_y)
@@ -529,7 +472,7 @@ async def main(
                             should_log_latency = (
                                 frame_t_start is not None
                                 and is_non_neutral
-                                and latency_count < CONFIG["latency_trials"]
+                                and latency_count < LATENCY_TRIALS
                             )
                             if should_log_latency and latency_writer is not None:
                                 t_end = time.perf_counter()
@@ -553,10 +496,10 @@ async def main(
                                 ])
 
                                 latency_count += 1
-                                if latency_count == CONFIG["latency_trials"]:
+                                if latency_count == LATENCY_TRIALS:
                                     saved_path = latency_path.resolve()
                                     print(
-                                        f"\nLatency logging complete - {CONFIG['latency_trials']} trials saved to {saved_path}"
+                                        f"\nLatency logging complete - {LATENCY_TRIALS} trials saved to {saved_path}"
                                     )
 
                             gest_str = ",".join(gesture_list)
@@ -619,9 +562,9 @@ async def main(
                     output_ms = per_frame_ms(benchmark_stats["output_s"])
                     loop_total_ms = per_frame_ms(benchmark_stats["total_s"])
 
-                    benchmark_dir = project_root / CONFIG["benchmark_log_dir"]
+                    benchmark_dir = project_root / BENCHMARK_LOG_DIR
                     benchmark_dir.mkdir(parents=True, exist_ok=True)
-                    benchmark_path = benchmark_dir / CONFIG["benchmark_log_file"]
+                    benchmark_path = benchmark_dir / BENCHMARK_LOG_FILE
                     benchmark_header = [
                         "timestamp",
                         "run_tag",
@@ -700,7 +643,7 @@ if __name__ == "__main__":
     try:
         asyncio.run(main(
             visualise_mode=args.visualise,
-            log_latency=(CONFIG["log_latency"] or args.log_latency),
+            log_latency=(LOG_LATENCY_DEFAULT or args.log_latency),
             benchmark_seconds=args.benchmark_seconds,
             benchmark_capture_only=args.benchmark_capture_only,
             run_tag=args.run_tag,
