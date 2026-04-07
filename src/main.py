@@ -135,10 +135,9 @@ try:
         f"Loading Camera Index {CAMERA_INDEX} ({CAMERA_LABEL}) from {config_path}..."
     )
 except FileNotFoundError:
-    logging.error("Error: 'camera_config.txt' not found.")
-    logging.error("Please run 'python src/setup_camera.py' first to select your camera.")
-    input("Press Enter to exit...")
-    sys.exit()
+    logging.warning("camera_config.txt not found. Using default index 0.")
+    CAMERA_INDEX = 0
+    CAMERA_LABEL = "camera_index_0"
 except ValueError:
     logging.error("Invalid camera index in camera_config.txt. Using default 0.")
     CAMERA_INDEX = 0

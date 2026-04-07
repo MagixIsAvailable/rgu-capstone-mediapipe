@@ -9,7 +9,7 @@
             "middle_pinch": "SHOULDER_RIGHT",
             "ring_pinch": "TRIGGER_LT",
             "pinky_pinch": "TRIGGER_RT",
-            "open_palm": "NEUTRAL"
+            "OPEN_PALM": "NEUTRAL"
         },
         "combos": {
             "index_bent+middle_bent": "BUTTON_BACK",
