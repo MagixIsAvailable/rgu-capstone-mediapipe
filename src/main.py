@@ -76,13 +76,16 @@ from gesture_mapping import map_right_hand_gesture, map_left_hand_gesture
 import vigem_output
 import visualiser
 
+# MediaPipe legacy Hands solution handle used for detector construction.
 mp_hands = mp.solutions.hands
+# Directory of this file; used to resolve camera config and project-relative logs.
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ----------------------------------------------------------------
 # Camera config
 # ----------------------------------------------------------------
 try:
+    # Read persisted camera selection written by setup_camera.py.
     config_path = os.path.join(SCRIPT_DIR, "camera_config.txt")
     with open(config_path, "r") as f:
         content = f.read().strip()
@@ -91,6 +94,7 @@ try:
             CAMERA_INDEX = 0
             logging.warning("camera_config.txt is empty. Using default index 0.")
         elif content.startswith("{"):
+            # Preferred format: JSON with index + friendly label.
             payload = json.loads(content)
             CAMERA_INDEX = int(payload.get("camera_index", 0))
             CAMERA_LABEL = payload.get("camera_label", f"camera_index_{CAMERA_INDEX}")
@@ -121,6 +125,7 @@ except json.JSONDecodeError:
 connected_clients = set()
 
 async def websocket_handler(websocket):
+    # Enforce a connection cap so telemetry cannot grow unbounded.
     if len(connected_clients) >= MAX_WEBSOCKET_CLIENTS:
         logging.warning(f"Rejected connection from {websocket.remote_address}: too many clients")
         await websocket.close()
@@ -135,6 +140,7 @@ async def websocket_handler(websocket):
         logging.info(f"Client disconnected: {websocket.remote_address}")
 
 async def broadcast(message_dict):
+    # Fast-exit when websocket output is disabled or nobody is listening.
     if not WEBSOCKET_ENABLED or not connected_clients:
         return
     message_str = json.dumps(message_dict)
@@ -156,6 +162,7 @@ def detect_gesture(landmarks, handedness="Left") -> list[str]:
     Neutral state returns ["OPEN_PALM"].
     """
     def dist(a, b):
+        # 2D euclidean distance in normalized image coordinates.
         return math.dist((a.x, a.y), (b.x, b.y))
 
     if handedness == "Right":
@@ -192,9 +199,11 @@ def map_to_vigem(gesture_list: list[str], handedness: str) -> list[str]:
         if "ring_bent" in gests and "pinky_bent" in gests:
             return [map_right_hand_gesture("ring_bent+pinky_bent")]
 
+        # Otherwise map each right-hand gesture label via JSON mapping.
         res = [map_right_hand_gesture(g) for g in gesture_list]
         return res if res else ["NEUTRAL"]
 
+    # Left-hand labels are emitted as left_* by detector; normalize before lookup.
     mapped = []
     for g in gesture_list:
         normalized = g.replace("left_", "")
@@ -213,6 +222,7 @@ async def main(
     benchmark_capture_only=False,
     run_tag="",
 ):
+    # Build MediaPipe detector once and keep it alive for the run.
     logging.info("Initializing MediaPipe Hands (Legacy Mode)...")
     with mp_hands.Hands(
         model_complexity=0,
@@ -220,6 +230,7 @@ async def main(
         min_tracking_confidence=TRACKING_CONFIDENCE,
         max_num_hands=2
     ) as detector:
+        # Open selected camera and request preferred capture mode.
         cap = cv2.VideoCapture(CAMERA_INDEX)
         # Request 60 FPS (many webcams require MJPG for >30fps at high res)
         cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
@@ -249,6 +260,7 @@ async def main(
         decoded_fourcc = "".join(chr((raw_fourcc >> (8 * i)) & 0xFF) for i in range(4)).strip("\x00")
         negotiated_fourcc = decoded_fourcc if decoded_fourcc.isprintable() and decoded_fourcc else "UNKNOWN"
 
+        # Benchmark accumulators hold stage timings across frames.
         benchmark_enabled = benchmark_seconds > 0
         benchmark_start = time.perf_counter()
         benchmark_stats = {
@@ -276,6 +288,7 @@ async def main(
         # EMA state keyed by hand index — fixes cross-hand bleed
         ema_state = {}
 
+        # WebSocket server is only started when telemetry is enabled.
         server_cm = (
             websockets.serve(websocket_handler, WEBSOCKET_HOST, WEBSOCKET_PORT)
             if WEBSOCKET_ENABLED else contextlib.nullcontext()
@@ -288,6 +301,7 @@ async def main(
 
             latency_count = 0
             project_root = Path(SCRIPT_DIR).parent
+            # Create per-session latency CSV in logs/latency.
             latency_dir = project_root / LATENCY_LOG_DIR
             latency_dir.mkdir(parents=True, exist_ok=True)
             session_created_at = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -296,6 +310,7 @@ async def main(
             latency_file_handle = None
             latency_writer = None
             if log_latency:
+                # Write static session metadata first, then per-event rows.
                 latency_file_handle = latency_path.open("w", newline="")
                 latency_writer = csv.writer(latency_file_handle)
                 # Write run metadata once to avoid duplicating static values per event row.
@@ -333,6 +348,7 @@ async def main(
 
             try:
                 while cap.isOpened():
+                    # Total frame loop timing starts here.
                     frame_loop_t0 = time.perf_counter()
                     frame_index += 1
                     frame_t_start = None
@@ -352,6 +368,7 @@ async def main(
                         break
 
                     if benchmark_enabled and benchmark_capture_only:
+                        # Capture-only mode intentionally skips processing/output.
                         benchmark_stats["frames"] += 1
                         benchmark_stats["total_s"] += (time.perf_counter() - frame_loop_t0)
                         if (time.perf_counter() - benchmark_start) >= benchmark_seconds:
@@ -360,6 +377,7 @@ async def main(
                         continue
 
                     preprocess_t0 = time.perf_counter()
+                    # Mirror camera for natural interaction and optionally apply contrast/brightness.
                     frame = cv2.flip(frame, 1)
                     if PREPROCESS_CONTRAST_ENABLED:
                         frame = cv2.convertScaleAbs(
@@ -373,6 +391,7 @@ async def main(
                     benchmark_stats["preprocess_s"] += (preprocess_t1 - preprocess_t0)
 
                     mediapipe_t0 = time.perf_counter()
+                    # Hand landmark inference.
                     result = detector.process(rgb)
                     mediapipe_t1 = time.perf_counter()
                     benchmark_stats["mediapipe_s"] += (mediapipe_t1 - mediapipe_t0)
@@ -382,6 +401,7 @@ async def main(
                     mediapipe_ms_frame = (mediapipe_t1 - mediapipe_t0) * 1000.0
 
                     now = time.time()
+                    # Instantaneous FPS + rolling 1-second FPS for smoother monitoring/logging.
                     dt  = now - prev_frame_time
                     fps = 1.0 / dt if dt > 0 else 0
                     prev_frame_time = now
@@ -432,6 +452,7 @@ async def main(
                             hand_confidence = hand_info.score
 
                             gesture_list = detect_gesture(lm, handedness)
+                            # Convert abstract gesture labels to controller actions.
                             vigem_label  = map_to_vigem(gesture_list, handedness)
 
                             # Joystick X: hand tilt (wrist → middle MCP)
@@ -466,6 +487,7 @@ async def main(
                             norm_x = max(-1.0, min(1.0, norm_x))
                             norm_y = max(-1.0, min(1.0, norm_y))
 
+                            # Send mapped action(s) and analog values to virtual controller.
                             vigem_output.apply_gesture(vigem_label, handedness, norm_x, norm_y)
 
                             is_non_neutral = any(g != "OPEN_PALM" for g in gesture_list)
@@ -475,6 +497,7 @@ async def main(
                                 and latency_count < LATENCY_TRIALS
                             )
                             if should_log_latency and latency_writer is not None:
+                                # Buffer rows and append output/loop timings later in same frame.
                                 t_end = time.perf_counter()
                                 latency_ms = (t_end - frame_t_start) * 1000
                                 gest_str = ",".join(gesture_list)
@@ -503,6 +526,7 @@ async def main(
                                     )
 
                             gest_str = ",".join(gesture_list)
+                            # Optional real-time telemetry for browser/client visualizations.
                             await broadcast({"x": norm_x, "y": norm_y,
                                              "gesture": gest_str, "hand": handedness})
 
@@ -518,6 +542,7 @@ async def main(
                             prev_pinch_dists[i] = p_dist
 
                     else:
+                        # No valid hand data: release controller and reset frame-local history state.
                         vigem_output.release_all()
                         prev_pinch_dists = []
                         ema_state.clear()
@@ -534,6 +559,7 @@ async def main(
                             ])
 
                     if visualise_mode:
+                        # Draw rich diagnostics overlay window when --visualise is enabled.
                         vis_lm = [hlp.landmark for hlp in (result.multi_hand_landmarks or [])]
                         annotated = visualiser.draw_overlay(frame, vis_lm, calculated_values)
                         cv2.imshow("MediaPipe Gesture Controller", annotated)
@@ -545,6 +571,7 @@ async def main(
 
                     await asyncio.sleep(0)
             finally:
+                # Always release resources, even on errors/keyboard interrupt.
                 cap.release()
                 if visualise_mode:
                     cv2.destroyAllWindows()
@@ -552,6 +579,7 @@ async def main(
                     latency_file_handle.close()
 
                 if benchmark_enabled:
+                    # Compute aggregate per-frame stats and append benchmark CSV row.
                     runtime_s = max(1e-9, time.perf_counter() - benchmark_start)
                     frames = benchmark_stats["frames"]
                     fps = frames / runtime_s
@@ -628,6 +656,7 @@ async def main(
                     print(f"Benchmark row saved to: {benchmark_path.resolve()}")
 
 if __name__ == "__main__":
+    # CLI interface for runtime modes.
     parser = argparse.ArgumentParser(description="MediaPipe Gesture Controller")
     parser.add_argument("--visualise", action="store_true",
                         help="Enable rich visualisation overlay")
