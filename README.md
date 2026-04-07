@@ -9,8 +9,22 @@ Developed as an RGU Honours capstone project (CM4134), supervised by Dr John N.A
 ## System Requirements
 
 - **OS**: Windows 10 or Windows 11 (required for ViGEmBus)
-- **Python**: 3.11 or 3.12 (project currently running on Python 3.12.6)
+- **Python (project baseline)**: 3.11
+- **pip**: 20.3+
 - **Driver**: [ViGEmBus Driver](https://github.com/nefarius/ViGEmBus/releases) — must be installed manually before running
+
+### MediaPipe Compatibility Reference
+
+According to the official MediaPipe Python setup documentation, MediaPipe supports:
+
+- **Desktop OS**: Windows, macOS, Linux
+- **IoT OS**: Raspberry Pi OS 64-bit
+- **Python**: 3.9 to 3.12
+- **pip**: 20.3+
+
+Reference: [MediaPipe Python Setup](https://ai.google.dev/edge/mediapipe/solutions/setup_python)
+
+For this repository, Python 3.11 remains the validated baseline used for development and evaluation.
 
 ---
 
