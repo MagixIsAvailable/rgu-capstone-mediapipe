@@ -1,32 +1,17 @@
-"""VisionInput — Gesture-to-Controller System
-==========================================
-BSc (Hons) Computing & Creative Design Capstone Project
-Robert Gordon University | CM4134 Honours Project
+"""
+Module: main.py
+Project: VisionInput — Gesture-Based Controller for Immersive Projection Environments
+Author: Michal Lazovy | RGU CM4134 Honours Capstone 2026
+Supervisor: Dr John N.A. Brown | Partner: James Hutton Institute, Aberdeen
 
-This module implements a vision-based gesture controller that translates
-hand movements into Xbox controller inputs via MediaPipe and ViGEm.
+Purpose:
+Entry point for the VisionInput application. Captures webcam frames via OpenCV, processes hand landmarks using the MediaPipe Legacy Hands API, detects gestures using heuristic geometric analysis, applies EMA smoothing and dead zone logic, and dispatches controller outputs via vigem_output. Optionally runs a WebSocket server for browser-based visualisation and a debug overlay via visualiser.
 
-Architecture (matches Chapter 3 dissertation structure):
-├── Vision Layer (Section 3.2)
-│   └── Camera init, MediaPipe Hands, frame preprocessing
-├── Gesture Detection (Section 3.3)
-│   └── detect_gesture() - heuristic geometric classifier
-├── Mapping Layer (Section 3.4)
-│   └── map_to_vigem() - bimanual asymmetric mapping (Guiard, 1987)
-└── Output Layer (Section 3.5)
-    └── vigem_output.py - ViGEm virtual Xbox controller
+Dependencies:
+mediapipe, cv2, asyncio, websockets, vigem_output, visualiser
 
-Key Files:
-- main.py: This file - core runtime loop
-- config.py: All configuration values (EMA_ALPHA, DEAD_ZONE, etc.)
-- vigem_output.py: ViGEm output layer
-- setup_camera.py: Camera selection utility
-- gesture_map.json: Gesture-to-controller mapping (currently loaded but unused - see TODO)
-- visualiser.py: Debug overlay (--visualise flag)
-
-Author: Michal Lazovy
-Supervisor: Dr John N.A. Brown
-Last Updated: April 2026
+Usage:
+python src/main.py or python src/main.py --visualise
 """
 import cv2
 import sys
@@ -46,12 +31,6 @@ logging.basicConfig(
 )
 
 sys.modules['sounddevice'] = MagicMock()
-
-# =============================================================================
-# SECTION 1: CONFIGURATION
-# Corresponds to: Chapter 3, Section 3.1 System Architecture
-# All tunables consolidated here via config.py for easy adjustment
-# =============================================================================
 
 import mediapipe as mp
 import asyncio
@@ -94,10 +73,6 @@ from config import (
 )
 from gesture_mapping import map_right_hand_gesture, map_left_hand_gesture
 
-# TODO: gesture_map.json is loaded but not currently used for runtime mapping.
-# Currently using hardcoded gesture_mapping.py functions below.
-# Refactor post-Session 3 to use JSON for more flexible gesture definitions.
-
 import vigem_output
 import visualiser
 
@@ -105,14 +80,6 @@ import visualiser
 mp_hands = mp.solutions.hands
 # Directory of this file; used to resolve camera config and project-relative logs.
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# =============================================================================
-# SECTION 2: VISION LAYER — Camera & MediaPipe Initialization
-# Corresponds to: Chapter 3, Section 3.2 Vision Layer
-# - Camera initialization with negotiation (adaptive-by-negotiation)
-# - MediaPipe Hands setup (model_complexity=0 for low latency)
-# - Optional frame preprocessing (O(x,y) = α·I(x,y) + β)
-# =============================================================================
 
 # ----------------------------------------------------------------
 # Camera config
@@ -185,67 +152,36 @@ async def broadcast(message_dict):
             dead.add(client)
     connected_clients.difference_update(dead)
 
-# =============================================================================
-# SECTION 3: GESTURE DETECTION
-# Corresponds to: Chapter 3, Section 3.3 Gesture Detection
-# - Heuristic geometric classifier (not ML-based)
-# - Pinch detection: Euclidean distance < threshold
-# - Bend detection: tip.y > pip.y (finger flexion proxy)
-# - Priority order: pinch > combo > individual bend
-# =============================================================================
-
+# ----------------------------------------------------------------
+# Gesture detection — always returns list[str]
+# ----------------------------------------------------------------
 def detect_gesture(landmarks, handedness="Left") -> list[str]:
-    """Detect gesture from hand landmarks using heuristic geometric rules.
-    
-    This function implements a deterministic classifier rather than ML-based
-    recognition. Selected for interpretability and predictable failure modes.
-    
-    Detection priority (to resolve ambiguity):
-        1. Pinch gestures (finger-to-thumb contact)
-        2. Multi-finger combos (e.g., index+middle for BUTTON_7)
-        3. Individual finger bends
-    
-    Args:
-        landmarks: MediaPipe NormalizedLandmarkList (21 landmarks)
-            Index mapping: 0=wrist, 1-4=thumb, 5-8=index, 9-12=middle,
-            13-16=ring, 17-20=pinky. Within each finger: MCP→PIP→DIP→tip.
-        handedness: str, either "Left" or "Right"
-    
-    Returns:
-        list[str]: List of detected gesture labels (e.g., ['index_bent', 'middle_bent'])
-                   Empty bends list defaults to ['OPEN_PALM'].
-    
-    References:
-        - Chapter 3, Section 3.3 Gesture Detection
-        - Pinch thresholds: index=0.05, middle=0.06, ring=0.07, pinky=0.08
-            (Thresholds increase per finger due to anatomical reach differences)
+    """
+    Returns a list of gesture label strings.
+    Single-gesture results are still returned as a one-element list.
+    Neutral state returns ["OPEN_PALM"].
     """
     def dist(a, b):
         # 2D euclidean distance in normalized image coordinates.
         return math.dist((a.x, a.y), (b.x, b.y))
 
     if handedness == "Right":
-        thumb = landmarks[4]  # Thumb tip (landmark 4)
-        # Layer B: pinch detection (priority — mutually exclusive)
-        # Pinch detection: Euclidean distance between thumb tip and finger tip.
-        # Thresholds increase per finger due to anatomical reach differences.
-        if dist(landmarks[8],  thumb) < PINCH_INDEX:  return ["index_pinch"]   # 0.05
-        if dist(landmarks[12], thumb) < PINCH_MIDDLE: return ["middle_pinch"]  # 0.06
-        if dist(landmarks[16], thumb) < PINCH_RING:   return ["ring_pinch"]    # 0.07
-        if dist(landmarks[20], thumb) < PINCH_PINKY:  return ["pinky_pinch"]   # 0.08
-        
-        # Layer A: individual finger bends (combinable)
-        # Finger bend detection: tip below PIP joint = finger flexed.
-        # Uses Y-axis comparison (Y increases downward in image coords).
+        thumb = landmarks[4]
+        # Layer B: pinch (priority — mutually exclusive)
+        if dist(landmarks[8],  thumb) < PINCH_INDEX:  return ["index_pinch"]
+        if dist(landmarks[12], thumb) < PINCH_MIDDLE: return ["middle_pinch"]
+        if dist(landmarks[16], thumb) < PINCH_RING:   return ["ring_pinch"]
+        if dist(landmarks[20], thumb) < PINCH_PINKY:  return ["pinky_pinch"]
+        # Layer A: individual bends (combinable)
         bends = []
-        if landmarks[8].y  > landmarks[6].y:  bends.append("index_bent")   # tip > PIP
-        if landmarks[12].y > landmarks[10].y: bends.append("middle_bent")  # tip > PIP
-        if landmarks[16].y > landmarks[14].y: bends.append("ring_bent")    # tip > PIP
-        if landmarks[20].y > landmarks[18].y: bends.append("pinky_bent")   # tip > PIP
+        if landmarks[8].y  > landmarks[6].y:  bends.append("index_bent")
+        if landmarks[12].y > landmarks[10].y: bends.append("middle_bent")
+        if landmarks[16].y > landmarks[14].y: bends.append("ring_bent")
+        if landmarks[20].y > landmarks[18].y: bends.append("pinky_bent")
         return bends if bends else ["OPEN_PALM"]
 
-    # Left hand — D-pad control (no pinches, only bends for directional navigation)
-    # Layer: individual bends (combinable, same logic as right hand)
+    # Left hand — modified for D-pad control (as requested)
+    # Layer: individual bends (combinable, identical logic to Right hand)
     bends = []
     if landmarks[8].y  > landmarks[6].y:  bends.append("left_index_bent")
     if landmarks[12].y > landmarks[10].y: bends.append("left_middle_bent")
@@ -254,47 +190,20 @@ def detect_gesture(landmarks, handedness="Left") -> list[str]:
     
     return bends if bends else ["OPEN_PALM"]
 
-# =============================================================================
-# SECTION 4: GESTURE MAPPING
-# Corresponds to: Chapter 3, Section 3.4 Mapping Layer
-# - Bimanual asymmetry (Guiard, 1987)
-# - Left hand: continuous navigation (joystick) + D-pad from bends
-# - Right hand: discrete actions (buttons from pinches and combos)
-# =============================================================================
-
 def map_to_vigem(gesture_list: list[str], handedness: str) -> list[str]:
-    """Map detected gestures to controller actions following bimanual asymmetry.
-    
-    Design based on Guiard's Kinematic Chain Model (1987):
-    - Non-dominant hand (left): continuous spatial context (joystick)
-    - Dominant hand (right): discrete actions (buttons)
-    
-    Args:
-        gesture_list: list[str], gesture labels from detect_gesture()
-            E.g., ['index_bent', 'middle_bent'] from right hand
-        handedness: str, "Left" or "Right"
-    
-    Returns:
-        list[str]: Controller actions to apply via vigem_output.apply_gesture()
-                   E.g., ['BUTTON_7'] or ['NEUTRAL']
-    
-    References:
-        - Chapter 3, Section 3.4 Mapping Layer
-        - Guiard, Y. (1987). Asymmetric division of labor in human skilled bimanual action."""
     if handedness == "Right":
         gests = set(gesture_list)
-        # Combo detection (priority) — two-finger holds yield discrete actions
+        # Combo detection (priority)
         if "index_bent" in gests and "middle_bent" in gests:
-            return [map_right_hand_gesture("index_bent+middle_bent")]  # BUTTON_7
+            return [map_right_hand_gesture("index_bent+middle_bent")]
         if "ring_bent" in gests and "pinky_bent" in gests:
-            return [map_right_hand_gesture("ring_bent+pinky_bent")]    # BUTTON_8
+            return [map_right_hand_gesture("ring_bent+pinky_bent")]
 
-        # Otherwise map each right-hand gesture label via JSON mapping (gesture_map.json).
+        # Otherwise map each right-hand gesture label via JSON mapping.
         res = [map_right_hand_gesture(g) for g in gesture_list]
         return res if res else ["NEUTRAL"]
 
     # Left-hand labels are emitted as left_* by detector; normalize before lookup.
-    # Left hand uses continuous analog axes (joystick) + D-pad discrete actions.
     mapped = []
     for g in gesture_list:
         normalized = g.replace("left_", "")
@@ -303,13 +212,9 @@ def map_to_vigem(gesture_list: list[str], handedness: str) -> list[str]:
             mapped.append(action)
     return mapped if mapped else ["NEUTRAL"]
 
-# =============================================================================
-# SECTION 5: FRAME-SYNCHRONOUS MAIN LOOP & OUTPUT
-# Pipeline Structure: Camera → MediaPipe → detect_gesture() → map_to_vigem() → EMA → vigem_output
-# - EMA smoothing: smoothed = α × new + (1-α) × previous
-# - Dead zone: |value| < DEAD_ZONE → 0 (prevents unintended drift)
-# =============================================================================
-
+# ----------------------------------------------------------------
+# Main loop (async)
+# ----------------------------------------------------------------
 async def main(
     visualise_mode=False,
     log_latency=False,
@@ -572,24 +477,16 @@ async def main(
                                 tilt_y = (wrist.y - mcp.y) / (h_size + 1e-6)
                                 norm_y = -(tilt_y - NEUTRAL_Y_OFFSET) * TILT_GAIN
 
-                            # EMA smoothing: damps frame-to-frame jitter while preserving responsiveness.
-                            # Per-hand state (keyed by index) prevents cross-hand bleed from shared state.
-                            # Formula: smoothed = α × raw + (1-α) × previous
-                            # α=0.3 balances smoothness vs latency (see Chapter 4 evaluation)
+                            # Per-hand EMA (fixes shared-state bug)
                             prev = ema_state.get(i, (0.0, 0.0))
                             a    = EMA_ALPHA
                             norm_x = a * norm_x + (1 - a) * prev[0]
                             norm_y = a * norm_y + (1 - a) * prev[1]
                             ema_state[i] = (norm_x, norm_y)
 
-                            # Clamp to [-1.0, 1.0] controller range
                             norm_x = max(-1.0, min(1.0, norm_x))
                             norm_y = max(-1.0, min(1.0, norm_y))
 
-                            # TODO: DEAD_ZONE defined in config.py but actual dead zone logic applied in
-                            # vigem_output.py:apply_gesture(). Consolidate to single location post-evaluation
-                            # to avoid confusion and potential duplicated logic.
-                            
                             # Send mapped action(s) and analog values to virtual controller.
                             vigem_output.apply_gesture(vigem_label, handedness, norm_x, norm_y)
 
