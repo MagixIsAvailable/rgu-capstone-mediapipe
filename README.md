@@ -9,9 +9,9 @@ Developed as an RGU Honours capstone project (CM4134), supervised by Dr John N.A
 ## System Requirements
 
 - **OS**: Windows 10 or Windows 11 (required for ViGEmBus)
-- **Python (project baseline)**: 3.11
+- **Python (project baseline)**: 3.11 (required; the MediaPipe Legacy API used in this project is incompatible with Python 3.12+)
 - **pip**: 20.3+
-- **Driver**: [ViGEmBus Driver](https://github.com/nefarius/ViGEmBus/releases) — must be installed manually before running
+- **Driver**: [ViGEmBus Driver](https://github.com/nefarius/ViGEmBus/releases) — must be installed at the OS level before first run
 
 ### MediaPipe Compatibility Reference
 
@@ -34,6 +34,7 @@ For this repository, Python 3.11 remains the validated baseline used for develop
 - Split-hand controls are active (left hand movement and D-pad, right hand buttons/triggers).
 - Visual debug overlay is available via `--visualise`.
 - Latency logging is now implemented with per-session CSV output and auto timestamping.
+- Median pipeline latency: 27.93 ms across 549 trials (target: <=33 ms).
 
 ---
 
@@ -56,6 +57,13 @@ VisionInput is designed to run on standard hardware.
 - **Webcam**: Any USB webcam (720p or higher recommended)
 - **CPU**: Any modern multi-core processor — MediaPipe runs on CPU
 - **Lighting**: Consistent, adequate lighting is essential for stable hand tracking. Avoid backlighting.
+- **Tested alternative**: iPhone via Camo Studio performed best in evaluation and produced zero latency spikes during the Degree Show workflow.
+
+## Known Limitations
+
+- **Right analog stick unmapped**: The current monocular RGB camera setup cannot reliably recover the depth-occluded thumb motion needed for right stick emulation.
+- **Multi-finger combo speed**: Rapid simultaneous finger inputs can fail when hand occlusion increases at shallow camera angles.
+- **ViGEmBus requires admin installation**: The driver must be installed at the operating-system level before first use. The application itself does not need to be run as administrator.
 
 ---
 
