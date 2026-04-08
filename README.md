@@ -28,7 +28,7 @@ For this repository, Python 3.11 remains the validated baseline used for develop
 
 ---
 
-## Current Stage (March 2026)
+## Current Stage (April 2026)
 
 - Core real-time gesture-to-controller pipeline is implemented and stable.
 - Split-hand controls are active (left hand movement and D-pad, right hand buttons/triggers).
@@ -183,14 +183,14 @@ Two-layer gesture system. **Pinches take priority over bends.**
 | Ring bent | X |
 | Pinky bent | Y |
 | Index + Middle bent | Back / View |
-| Index + Ring bent | Start / Menu |
+| Ring + Pinky bent | Start / Menu |
 | Open palm | No input (neutral) |
 
 ---
 
 ## Tuning & Customisation
 
-Edit the `CONFIG` dictionary at the top of `src/main.py` to adjust behaviour:
+Edit `src/config.py` to adjust behaviour:
 
 | Parameter | Effect |
 |:---|:---|
@@ -276,7 +276,7 @@ Edit the `CONFIG` dictionary at the top of `src/main.py` to adjust behaviour:
 
 ### Web Interface (Experimental)
 A 360° A-Frame viewer is included in `web/index.html`. To enable:
-1. Set `WEBSOCKET_ENABLED = True` in `src/main.py`
+1. Set `WEBSOCKET_ENABLED = True` in `src/config.py`
 2. Open `web/index.html` in a browser on the same machine
 
 ---
@@ -306,7 +306,7 @@ rgu-capstone-mediapipe/
 |:---|:---|
 | No controller detected in game | Ensure ViGEmBus is installed. You should hear the USB sound when `main.py` starts. |
 | Script exits immediately | Run `python src/setup_camera.py` to create a valid `camera_config.txt`. |
-| Character drifts when hands are still | Adjust `NEUTRAL_Y_OFFSET` in CONFIG. Run with `--visualise` and read the WRIST Y value at your natural resting position. |
+| Character drifts when hands are still | Adjust `NEUTRAL_Y_OFFSET` in `src/config.py`. Run with `--visualise` and read the WRIST Y value at your natural resting position. |
 | Hand tracking unstable | Improve lighting. Avoid wearing gloves or having a busy background. |
 | Pinch not registering | Bring fingertip closer to thumb. Ring and pinky require more deliberate contact than index. |
 
