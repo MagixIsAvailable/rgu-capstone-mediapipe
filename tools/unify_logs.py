@@ -37,12 +37,14 @@ def parse_log_file(path: Path):
         with path.open("r", encoding="utf-8", errors="replace", newline="") as f:
             rows = list(csv.reader(f))
 
-        # Find first real data header row (starts with timestamp)
+        # Find first real data header row (starts with timestamp or session_created_at)
         header_idx = None
         for i, row in enumerate(rows):
-            if row and row[0].strip().lower() == "timestamp":
-                header_idx = i
-                break
+            if row:
+                first_col = row[0].strip().lower()
+                if first_col in ("timestamp", "session_created_at"):
+                    header_idx = i
+                    break
 
         if header_idx is None:
             print(f"[SKIP] No data header found: {path}")
@@ -56,6 +58,9 @@ def parse_log_file(path: Path):
                 v = row[1].strip()
                 if k:
                     metadata[k] = v
+
+        if "camera_label" not in metadata:
+            metadata["camera_label"] = "Unknown (legacy log)"
 
         header = [c.strip() for c in rows[header_idx]]
         data_rows = rows[header_idx + 1 :]
