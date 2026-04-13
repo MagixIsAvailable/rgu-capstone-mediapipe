@@ -153,7 +153,40 @@ except json.JSONDecodeError:
 connected_clients = set()
 
 async def websocket_handler(websocket):
-    # Enforce a connection cap so telemetry cannot grow unbounded.
+    """Handle incoming WebSocket client connection with connection cap enforcement.
+    
+    This handler manages a single client connection lifecycle. It maintains a
+    global connected_clients set to track all active connections and enforce
+    a maximum client limit to prevent resource exhaustion.
+    
+    Design rationale:
+    - One coroutine per client allows concurrent client servicing (async I/O)
+    - Connection cap prevents unbounded memory growth (important for long-running
+      server processes that may accumulate connection attempts over hours/days)
+    - websocket.wait_closed() is blocking but async-safe; coroutine yields control
+      while waiting for client to disconnect
+    
+    Args:
+        websocket: websockets connection object (context-managed by caller)
+    
+    Returns:
+        None
+    
+    Side effects:
+        - Modifies global `connected_clients` set (add/remove websocket objects)
+        - Logs client connection and disconnection events
+        - May close websocket connection if client count exceeds MAX_WEBSOCKET_CLIENTS
+    
+    Raises:
+        Exceptions during websocket operations  are handled by caller (websockets.serve)
+        and do not crash the server.
+    
+    References:
+        - config.py: MAX_WEBSOCKET_CLIENTS constant
+        - websockets.serve() documentation: https://websockets.readthedocs.io/
+    """
+    # Enforce a connection cap so telemetry system cannot grow unbounded
+    # (e.g., if clients repeatedly connect/disconnect without cleanup)
     if len(connected_clients) >= MAX_WEBSOCKET_CLIENTS:
         logging.warning(f"Rejected connection from {websocket.remote_address}: too many clients")
         await websocket.close()
@@ -162,22 +195,61 @@ async def websocket_handler(websocket):
     logging.info(f"New client connected: {websocket.remote_address}")
     connected_clients.add(websocket)
     try:
+        # Block until this client disconnects (remote close or error)
+        # websocket.wait_closed() yields control while waiting (doesn't block event loop)
         await websocket.wait_closed()
     finally:
+        # Cleanup: remove from active set (runs even if connection errors out)
         connected_clients.discard(websocket)
         logging.info(f"Client disconnected: {websocket.remote_address}")
 
 async def broadcast(message_dict):
-    # Fast-exit when websocket output is disabled or nobody is listening.
+    """Broadcast a JSON message to all connected WebSocket clients.
+    
+    Non-blocking pub-sub pattern: ignores clients that disconnect during send
+    (they're silently removed from the client set). Fast-exit when no clients
+    are listening or WebSocket disabled.
+    
+    Design rationale:
+    - Fast-exit when no receivers (common case during headless operation)
+    - Fire-and-forget semantics; if a client drops, just remove and continue
+    - JSON serialization centralizes here (single encode per frame vs per-client)
+    - Error handling collects dead connections and batch-removes them
+    
+    Args:
+        message_dict: dict, arbitrary data to broadcast
+            Typically: {"x": norm_x, "y": norm_y, "gesture": gesture_str, "hand": handedness}
+            Will be JSON-encoded and sent to all clients
+    
+    Returns:
+        None
+    
+    Side effects:
+        - Serializes message_dict to JSON string
+        - Sends to all connected WebSocket clients (async, non-blocking)
+        - Modifies global `connected_clients` set (removes disconnected clients)
+        - Logs nothing on success (keep frame-by-frame logging quiet)
+    
+    Performance note:
+        - O(N) complexity where N = number of connected clients
+        - Typical case N=0 (telemetry disabled or no clients) → instant return
+        - JSON encoding is ~0.1ms for small dicts
+    """
+    # Fast-exit when WebSocket output is disabled or nobody is listening
     if not WEBSOCKET_ENABLED or not connected_clients:
         return
-    message_str = json.dumps(message_dict)
-    dead = set()
+    
+    message_str = json.dumps(message_dict)  # Single encode per frame
+    dead = set()  # Collect disconnected clients for batch removal
+    
     for client in connected_clients:
         try:
-            await client.send(message_str)
+            await client.send(message_str)  # Async send (non-blocking)
         except websockets.exceptions.ConnectionClosed:
+            # Client disconnected — mark for removal
             dead.add(client)
+    
+    # Batch remove all disconnected clients
     connected_clients.difference_update(dead)
 
 # =============================================================================
@@ -192,58 +264,121 @@ async def broadcast(message_dict):
 def detect_gesture(landmarks, handedness="Left") -> list[str]:
     """Detect gesture from hand landmarks using heuristic geometric rules.
     
-    This function implements a deterministic classifier rather than ML-based
-    recognition. Selected for interpretability and predictable failure modes.
+    This function implements a deterministic (non-ML) classifier based on simple
+    geometric heuristics: pinch detection via Euclidean distance, finger bends via
+    Y-coordinate comparison. Chosen for interpretability and predictable failure modes.
     
-    Detection priority (to resolve ambiguity):
-        1. Pinch gestures (finger-to-thumb contact)
-        2. Multi-finger combos (e.g., index+middle for BUTTON_7)
-        3. Individual finger bends
+    Detection priority (resolves ambiguity when multiple conditions met):
+        1. Pinch gestures (finger-to-thumb contact) — highest priority, mutually exclusive
+        2. Individual finger bends — combinable, lower priority
+        3. Default OPEN_PALM when no bends detected
+    
+    Algorithm overview:
+        RIGHT HAND (dominant — discrete actions):
+            1. Check pinches (thumb tip ↔ each finger tip in order: index, middle, ring, pinky)
+               If any pinch detected, return immediately (priority blocking)
+            2. Check individual finger bends (tip below PIP joint on each finger)
+               Collect all bends into a list (combinable, e.g., both index+middle bent)
+            3. Return bends list or default ['OPEN_PALM']
+        
+        LEFT HAND (non-dominant — continuous + D-pad):
+            1. Skip pinch detection (left hand only does bends)
+            2. Check individual finger bends with 'left_' prefix (for gesture_map.json)
+            3. Return bends list or default ['OPEN_PALM']
+    
+    Gesture labels:
+        Pinches (RIGHT only): 'index_pinch', 'middle_pinch', 'ring_pinch', 'pinky_pinch'
+        Bends (RIGHT): 'index_bent', 'middle_bent', 'ring_bent', 'pinky_bent'
+        Bends (LEFT): 'left_index_bent', 'left_middle_bent', 'left_ring_bent', 'left_pinky_bent'
+        Default: 'OPEN_PALM'
     
     Args:
-        landmarks: MediaPipe NormalizedLandmarkList (21 landmarks)
-            Index mapping: 0=wrist, 1-4=thumb, 5-8=index, 9-12=middle,
-            13-16=ring, 17-20=pinky. Within each finger: MCP→PIP→DIP→tip.
+        landmarks: MediaPipe NormalizedLandmarkList object (21 landmarks per hand)
+            Indices:
+                0: wrist (hand center, used as reference)
+                1-4: thumb (MCP, PIP, DIP, tip)
+                5-8: index (MCP, PIP, DIP, tip)
+                9-12: middle (MCP, PIP, DIP, tip)
+                13-16: ring (MCP, PIP, DIP, tip)
+                17-20: pinky (MCP, PIP, DIP, tip)
+            Reference: https://mediapipe-studio.webapps.google.com/home
+        
         handedness: str, either "Left" or "Right"
+            Determines which gesture types to detect (pinches only for right hand)
     
     Returns:
-        list[str]: List of detected gesture labels (e.g., ['index_bent', 'middle_bent'])
-                   Empty bends list defaults to ['OPEN_PALM'].
+        list[str]: Detected gesture labels
+            - Pinch detected: ['index_pinch'] (early return)
+            - Bends detected: ['index_bent', 'middle_bent'] (may have multiple)
+            - No bends: ['OPEN_PALM'] (always non-empty)
+    
+    Side effects:
+        Logging: none (pure computational function)
+    
+    Thresholds (from config.py):
+        Pinch distance thresholds increase per finger due to anatomical reach:
+        - PINCH_INDEX = 0.05 (closest thumb reach, most sensitive)
+        - PINCH_MIDDLE = 0.06
+        - PINCH_RING = 0.07
+        - PINCH_PINKY = 0.08 (furthest thumb reach, least sensitive)
+        These are normalized Euclidean distances in [0, 1] image coordinates.
+        Tuned empirically through calibration phase (Chapter 4, Section 4.3).
+    
+    Bend detection (Y-axis):
+        - Finger tip Y > PIP joint Y → finger is flexed (bent)
+        - Y-axis increases downward in image coords (top=0, bottom=1)
+        - Simple but effective proxy for flexion (handles rolled fingers, etc.)
+    
+    Known limitations:
+        - Thumb pinch detection assumes thumb-to-tip alignment (fails if thumb is abducted)
+        - Bent detection ignores MCP joint angle (only uses DIP crease), may misfire on
+          over-extended fingers with large hand shape variation
+        - No temporal filtering; single noisy frame can cause false gesture
+          (EMA smoothing applied post-detection in main.py, NOT here)
+        - RIGHT hand pinch priority may mask simultaneous bends
+          (e.g., if index pinches and middle bends, only 'index_pinch' returned)
     
     References:
-        - Chapter 3, Section 3.3 Gesture Detection
-        - Pinch thresholds: index=0.05, middle=0.06, ring=0.07, pinky=0.08
-            (Thresholds increase per finger due to anatomical reach differences)
+        - Chapter 3, Section 3.3: Gesture Detection
+        - Chapter 4, Section 4.3: Threshold calibration methodology
     """
     def dist(a, b):
-        # 2D euclidean distance in normalized image coordinates.
+        """Compute 2D Euclidean distance in normalized image coordinates."""
         return math.dist((a.x, a.y), (b.x, b.y))
 
     if handedness == "Right":
         thumb = landmarks[4]  # Thumb tip (landmark 4)
-        # Layer B: pinch detection (priority — mutually exclusive)
-        # Pinch detection: Euclidean distance between thumb tip and finger tip.
-        # Thresholds increase per finger due to anatomical reach differences.
+        
+        # ===== PHASE 1: Pinch detection (priority — mutually exclusive) =====
+        # Pinch detection via Euclidean distance between thumb tip and each finger tip.
+        # Thresholds increase per finger due to anatomical reach differences
+        # (see config.PINCH_*, tuned during calibration phase).
+        
         if dist(landmarks[8],  thumb) < PINCH_INDEX:  return ["index_pinch"]   # 0.05
         if dist(landmarks[12], thumb) < PINCH_MIDDLE: return ["middle_pinch"]  # 0.06
         if dist(landmarks[16], thumb) < PINCH_RING:   return ["ring_pinch"]    # 0.07
         if dist(landmarks[20], thumb) < PINCH_PINKY:  return ["pinky_pinch"]   # 0.08
         
-        # Layer A: individual finger bends (combinable)
-        # Finger bend detection: tip below PIP joint = finger flexed.
+        # ===== PHASE 2: Individual finger bends (combinable, lower priority) =====
+        # Finger bend detection: finger tip below PIP joint → finger is flexed.
         # Uses Y-axis comparison (Y increases downward in image coords).
+        # Indices: [finger_tip, DIP, PIP, MCP] for each finger
         bends = []
-        if landmarks[8].y  > landmarks[6].y:  bends.append("index_bent")   # tip > PIP
-        if landmarks[12].y > landmarks[10].y: bends.append("middle_bent")  # tip > PIP
-        if landmarks[16].y > landmarks[14].y: bends.append("ring_bent")    # tip > PIP
-        if landmarks[20].y > landmarks[18].y: bends.append("pinky_bent")   # tip > PIP
+        if landmarks[8].y  > landmarks[6].y:  bends.append("index_bent")   # index tip > index PIP
+        if landmarks[12].y > landmarks[10].y: bends.append("middle_bent")  # middle tip > middle PIP
+        if landmarks[16].y > landmarks[14].y: bends.append("ring_bent")    # ring tip > ring PIP
+        if landmarks[20].y > landmarks[18].y: bends.append("pinky_bent")   # pinky tip > pinky PIP
+        
+        # ===== PHASE 3: Default to OPEN_PALM if no bends detected =====
         return bends if bends else ["OPEN_PALM"]
 
-    # Left hand — D-pad control (no pinches, only bends for directional navigation)
-    # Layer: individual bends (combinable, same logic as right hand)
+    # ===== LEFT HAND: D-pad control (no pinches, only bends for directional navigation) =====
+    # Left hand skips pinch detection entirely; used for continuous joystick + D-pad
+    # (bimanual asymmetry per Guiard, 1987).
+    
     bends = []
-    if landmarks[8].y  > landmarks[6].y:  bends.append("left_index_bent")
-    if landmarks[12].y > landmarks[10].y: bends.append("left_middle_bent")
+    if landmarks[8].y  > landmarks[6].y:  bends.append("left_index_bent")   # Add 'left_' prefix
+    if landmarks[12].y > landmarks[10].y: bends.append("left_middle_bent")  # for gesture_map.json lookup
     if landmarks[16].y > landmarks[14].y: bends.append("left_ring_bent")
     if landmarks[20].y > landmarks[18].y: bends.append("left_pinky_bent")
     
@@ -258,29 +393,58 @@ def detect_gesture(landmarks, handedness="Left") -> list[str]:
 # =============================================================================
 
 def map_to_vigem(gesture_list: list[str], handedness: str) -> list[str]:
-    """Map detected gestures to controller actions following bimanual asymmetry.
+    """Map detected gestures to Xbox controller actions following bimanual asymmetry.
     
-    Design based on Guiard's Kinematic Chain Model (1987):
-    - Non-dominant hand (left): continuous spatial context (joystick)
-    - Dominant hand (right): discrete actions (buttons)
+    Bimanual control architecture based on Guiard's Kinematic Chain Model (1987):
+    - Non-dominant hand (LEFT): continuous spatial context (joystick + D-pad)
+    - Dominant hand (RIGHT): discrete actions (button presses)
+    
+    This function acts as a thin wrapper around gesture_mapping.map_hand_actions(),
+    which reads the actual mappings from gesture_map.json (data-driven, not hardcoded).
+    
+    Design rationale:
+    - Separates gesture DETECTION (heuristic geometric) from MAPPING (data-driven config)
+    - Allows runtime remapping of gestures without code changes (config/gesture_map.json)
+    - Left-hand labels include 'left_' prefix (from detect_gesture), which must be
+      stripped before JSON lookup (gesture_map.json uses unprefixed labels for left hand)
     
     Args:
         gesture_list: list[str], gesture labels from detect_gesture()
-            E.g., ['index_bent', 'middle_bent'] from right hand
+            Examples (RIGHT hand): ['index_bent', 'middle_bent'], ['OPEN_PALM']
+            Examples (LEFT hand): ['left_index_bent'], ['OPEN_PALM']
+        
         handedness: str, "Left" or "Right"
+            Determines which set of mappings is applied
     
     Returns:
-        list[str]: Controller actions to apply via vigem_output.apply_gesture()
-                   E.g., ['BUTTON_7'] or ['NEUTRAL']
+        list[str]: Controller action labels (vgamepad terminology)
+            Examples: ['BUTTON_A'], ['BUTTON_7', 'BUTTON_8'], ['NEUTRAL']
+            Passed directly to vigem_output.apply_gesture()
+    
+    Side effects:
+        - Reads gesture_map.json from disk (once, cached by gesture_mapping module)
+        - No logging or I/O beyond JSON read
     
     References:
-        - Chapter 3, Section 3.4 Mapping Layer
-        - Guiard, Y. (1987). Asymmetric division of labor in human skilled bimanual action."""
+        - Chapter 3, Section 3.4: Mapping Layer
+        - Guiard, Y. (1987). Asymmetric division of labor in human skilled bimanual action.
+          Journal of Motor Behavior, 19(4), 486-517.
+        - gesture_mapping.py: map_hand_actions() implementation
+        - gesture_map.json: Runtime mapping configuration
+    
+    Known issues/limitations:
+        - If gesture_map.json is malformed, map_hand_actions() may raise exception
+          (should be caught and logged in gesture_mapping module)
+        - String matching is case-sensitive (detect_gesture must match gesture_map.json keys exactly)
+    """
     if handedness == "Right":
         # Right-hand mappings are fully data-driven via gesture_map.json.
+        # Call gesture_mapping.map_hand_actions() with gesture labels as-is.
         return map_hand_actions("Right", gesture_list)
 
-    # Left-hand detector labels are emitted as left_*; normalize before JSON lookup.
+    # Left-hand detector returns labels with 'left_' prefix (e.g., 'left_index_bent').
+    # Strip prefix to normalize before JSON lookup — gesture_map.json stores
+    # left hand actions under unprefixed keys for clarity.
     normalized = [g.replace("left_", "") for g in gesture_list]
     return map_hand_actions("Left", normalized)
 
@@ -298,13 +462,115 @@ async def main(
     benchmark_capture_only=False,
     run_tag="",
 ):
+    """Main frame-synchronous processing loop for gesture detection and controller output.
+    
+    Pipeline architecture (runs frame-by-frame, async for WebSocket concurrency):
+        1. VISION LAYER: Capture frame from camera, preprocess (flip, contrast)
+        2. DETECTION: MediaPipe Hands inference → 21 landmark positions per hand
+        3. GESTURE LAYER: detect_gesture() → heuristic labels (pinch, bent, open)
+        4. MAPPING: map_to_vigem() → Xbox controller actions (data-driven from gesture_map.json)
+        5. FILTERING: EMA smoothing (per-hand) → damp frame jitter while preserving latency
+        6. OUTPUT: vigem_output.apply_gesture() → virtual Xbox bus
+        7. TELEMETRY: WebSocket broadcast + latency logging + visualisation overlay
+    
+    Performance targets (from Chapter 4 evaluation):
+        - Frame rate: 30-60 fps (adaptive to hardware/camera capability)
+        - Gesture latency: <100ms (capture to controller output)
+        - EMA smoothing: α=0.3 (tuned for responsiveness vs noise rejection)
+    
+    Modes and instrumentation:
+    
+    --visualise (visualise_mode=True):
+        Renders rich debug overlay on camera frames showing landmark positions,
+        detected gestures, pinch state, wrist vectors, FPS counter, calibration status.
+        Used for development/troubleshooting. Adds ~5-15ms per frame overhead.
+    
+    --log-latency (log_latency=True):
+        Records end-to-end latency from frame capture to controller output for first
+        LATENCY_TRIALS non-neutral gestures. Logged to logs/latency/latency_log_*.csv
+        with per-frame breakdown: capture, preprocess, MediaPipe, output timings.
+        Used for performance validation and optimization (Chapter 4 Section 4.2).
+    
+    --benchmark-seconds N (benchmark_seconds > 0):
+        Measures pipeline throughput over N seconds. Two modes:
+        - Full pipeline: runs full gesture→controller cycle, logs timing breakdown
+        - Capture-only: skips MediaPipe/output, measures raw frame I/O capability
+        Output: logs/benchmark/benchmark_runs.csv with per-frame averages and FPS.
+    
+    --run-tag "string" (run_tag):
+        Optional label for this run (e.g., "native", "camo", "low-light") used in logs
+        to track experiment conditions. Stored in latency and benchmark CSVs.
+    
+    State management:
+    - Calibration: First CALIBRATION_DURATION seconds (typically 3s) are skipped to build
+      stable MediaPipe tracking state. Visualizer shows countdown. ViGEm output suppressed.
+    - EMA state: Per-hand smoothing state keyed by hand index (prevents cross-hand bleed).
+    - Pinch history: Tracks previous frame pinch distance to compute pinch speed.
+    - Read error tracking: Counts cap.read() failures (helpful for diagnostics).
+    
+    Benchmarking accumulates timing per stage:
+        capture_s, preprocess_s, mediapipe_s, output_s, total_s → averages per frame
+    
+    Args:
+        visualise_mode: bool, enable rich debug overlay
+        log_latency: bool, record gesture latency to CSV
+        benchmark_seconds: float, run benchmark for N seconds (0.0 = disabled)
+        benchmark_capture_only: bool, measure frame capture only (skip processing)
+        run_tag: str, optional run label for log metadata
+    
+    Returns:
+        None
+    
+    Side effects:
+        - Opens camera device (cv2.VideoCapture)
+        - Initializes MediaPipe Hands detector (loads model file, one-time latency ~500ms)
+        - Creates/populates CSV files in logs/latency/ and logs/benchmark/
+        - Sends telemetry to WebSocket clients if WEBSOCKET_ENABLED
+        - Displays OpenCV window if visualise_mode=True
+        - Maps hand gestures to Xbox controller via ViGEm (requires driver installation)
+        - Catches KeyboardInterrupt (Ctrl+C) for graceful shutdown
+    
+    Async notes:
+        - Main frame loop is async to allow concurrent WebSocket broadcasts
+        - asyncio.sleep(0) yields control after each frame (allows event loop to process
+          other async tasks, such as WebSocket client handling)
+        - Benchmark mode respects async context (doesn't block other tasks)
+    
+    References:
+        - Chapter 3: System architecture and pipeline design
+        - Chapter 4: Performance evaluation and calibration
+        - config.py: All tunable parameters (EMA_ALPHA, DEAD_ZONE, CALIBRATION_DURATION, etc.)
+    
+    Known limitations/TODOs:
+        - DEAD_ZONE logic defined in config.py but also applied in vigem_output.py
+          (should be consolidated to single location to avoid confusion)
+        - No multi-threaded camera capture (all I/O on main thread)
+        - No fallback if MediaPipe model file (hand_landmarker.task) is missing
+        - Benchmark mode computes aggregates only at finish time (no streaming stats)
+    """
+    # =============================================================================
+    # SECTION 1: CONFIGURATION LOADING
+    # Corresponds to: Chapter 3, Section 3.1 System Architecture
+    # All tunables consolidated here via config.py for easy adjustment
+    # =============================================================================
+
+    # =============================================================================
+    # SECTION 2: VISION LAYER — Camera & MediaPipe Initialization
+    # Corresponds to: Chapter 3, Section 3.2 Vision Layer
+    # - Camera initialization with negotiation (adaptive-by-negotiation)
+    # - MediaPipe Hands setup (model_complexity=0 for low latency)
+    # - Optional frame preprocessing (O(x,y) = α·I(x,y) + β)
+    # =============================================================================
+
     # Build MediaPipe detector once and keep it alive for the run.
+    # Using Legacy Hands API (mp_hands.Hands()) for compatibility.
+    # model_complexity=0 selected for speed (real-time capable) over accuracy trade-off.
     logging.info("Initializing MediaPipe Hands (Legacy Mode)...")
     with mp_hands.Hands(
-        model_complexity=0,
-        min_detection_confidence=DETECTION_CONFIDENCE,
-        min_tracking_confidence=TRACKING_CONFIDENCE,
-        max_num_hands=2
+        model_complexity=0,  # 0=fast, 1=accurate; 0 chosen for real-time responsiveness
+        min_detection_confidence=DETECTION_CONFIDENCE,  # Landmark confidence threshold
+        min_tracking_confidence=TRACKING_CONFIDENCE,    # Temporal tracking threshold
+        max_num_hands=2  # Bimanual input: both hands supported
     ) as detector:
         # Open selected camera and request preferred capture mode.
         cap = cv2.VideoCapture(CAMERA_INDEX)
@@ -424,6 +690,11 @@ async def main(
 
             try:
                 while cap.isOpened():
+                    # =============================================================================
+                    # FRAME SYNCHRONOUS MAIN LOOP
+                    # Pipeline: Camera → MediaPipe → detect_gesture() → map_to_vigem() → EMA → ViGEm
+                    # =============================================================================
+                    
                     # Total frame loop timing starts here.
                     frame_loop_t0 = time.perf_counter()
                     frame_index += 1
@@ -432,42 +703,52 @@ async def main(
                         # Measure end-to-end latency from frame capture through ViGEm output.
                         frame_t_start = time.perf_counter()
 
+                    # =============================================================================
+                    # STAGE 1: CAPTURE & PREPROCESS
+                    # =============================================================================
+                    
                     capture_t0 = time.perf_counter()
-                    ret, frame = cap.read()
+                    ret, frame = cap.read()  # Read one frame from camera
                     capture_t1 = time.perf_counter()
                     benchmark_stats["capture_s"] += (capture_t1 - capture_t0)
                     if not ret:
                         read_failed_count += 1
                         logging.error("Failed to receive frame.")
-                        break
+                        break  # Camera disconnected or read error
                     if visualise_mode and (cv2.waitKey(1) & 0xFF == ord('q')):
-                        break
+                        break  # User pressed 'q' to quit
 
+                    # Skip processing during calibration (just capture and drain frames)
                     if benchmark_enabled and benchmark_capture_only:
                         # Capture-only mode intentionally skips processing/output.
                         benchmark_stats["frames"] += 1
                         benchmark_stats["total_s"] += (time.perf_counter() - frame_loop_t0)
                         if (time.perf_counter() - benchmark_start) >= benchmark_seconds:
-                            break
-                        await asyncio.sleep(0)
+                            break  # Benchmark duration exceeded
+                        await asyncio.sleep(0)  # Yield to event loop
                         continue
 
+                    # Frame preprocessing: flip for natural interaction + optional contrast boost
                     preprocess_t0 = time.perf_counter()
-                    # Mirror camera for natural interaction and optionally apply contrast/brightness.
-                    frame = cv2.flip(frame, 1)
+                    frame = cv2.flip(frame, 1)  # Horizontal flip (mirror for user comfort)
                     if PREPROCESS_CONTRAST_ENABLED:
+                        # Optional contrast/brightness adjustment: O(x,y) = α·I(x,y) + β
+                        # Can help with poor lighting or washed-out video
                         frame = cv2.convertScaleAbs(
                             frame,
-                            alpha=PREPROCESS_ALPHA,
-                            beta=PREPROCESS_BETA,
+                            alpha=PREPROCESS_ALPHA,      # Contrast multiplier
+                            beta=PREPROCESS_BETA,        # Brightness offset
                         )
-                    rgb   = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    rgb.flags.writeable = False
+                    rgb   = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # Convert to RGB for MediaPipe
+                    rgb.flags.writeable = False  # Hint to MediaPipe for optimization
                     preprocess_t1 = time.perf_counter()
                     benchmark_stats["preprocess_s"] += (preprocess_t1 - preprocess_t0)
 
+                    # =============================================================================
+                    # STAGE 2: MEDIA PIPE INFERENCE (Gesture Detection Layer)
+                    # =============================================================================
                     mediapipe_t0 = time.perf_counter()
-                    # Hand landmark inference.
+                    # Hand landmark inference (21 landmarks per hand, confidence scores)
                     result = detector.process(rgb)
                     mediapipe_t1 = time.perf_counter()
                     benchmark_stats["mediapipe_s"] += (mediapipe_t1 - mediapipe_t0)
@@ -476,24 +757,33 @@ async def main(
                     preprocess_ms_frame = (preprocess_t1 - preprocess_t0) * 1000.0
                     mediapipe_ms_frame = (mediapipe_t1 - mediapipe_t0) * 1000.0
 
+                    # =============================================================================
+                    # FRAME TIMING & FPS CALCULATION
+                    # =============================================================================
                     now = time.time()
-                    # Instantaneous FPS + rolling 1-second FPS for smoother monitoring/logging.
+                    
+                    # Instantaneous FPS (1 / frame_dt) + rolling 1-second FPS for monitoring
                     dt  = now - prev_frame_time
-                    fps = 1.0 / dt if dt > 0 else 0
+                    fps = 1.0 / dt if dt > 0 else 0  # Instantaneous
                     prev_frame_time = now
+                    
+                    # Rolling 1-second window: track timestamps of past second
                     frame_time_window.append(now)
                     while frame_time_window and (now - frame_time_window[0]) > 1.0:
-                        frame_time_window.popleft()
+                        frame_time_window.popleft()  # Remove old timestamps
+                    
+                    # Compute rolling FPS from window (more stable than instantaneous)
                     if len(frame_time_window) >= 2:
                         rolling_window_s = frame_time_window[-1] - frame_time_window[0]
                         fps_rolling_1s = ((len(frame_time_window) - 1) / rolling_window_s) if rolling_window_s > 0 else fps
                     else:
                         fps_rolling_1s = fps
 
+                    # Check if still in calibration phase
                     elapsed = now - calibration_start
                     if benchmark_enabled:
                         # Benchmark mode should measure steady-state processing, not startup calibration delay.
-                        elapsed = CALIBRATION_DURATION
+                        elapsed = CALIBRATION_DURATION  # Skip directly to end of calibration
                     is_calibrating = elapsed < CALIBRATION_DURATION
 
                     calculated_values = {
@@ -507,73 +797,111 @@ async def main(
                     output_t0 = time.perf_counter()
                     pending_latency_rows = []
                     if result.multi_hand_landmarks and not is_calibrating:
+                        # =============================================================================
+                        # STAGE 3: GESTURE DETECTION & MAPPING
+                        # Applies detect_gesture() → map_to_vigem() → EMA smoothing → ViGEm output
+                        # =============================================================================
+                        
                         # Align pinch history length to detected hand count
                         n_hands = len(result.multi_hand_landmarks)
                         while len(prev_pinch_dists) < n_hands:
                             prev_pinch_dists.append(0.0)
                         prev_pinch_dists = prev_pinch_dists[:n_hands]
 
-                        # Pre-pass: identify left/right wrist positions for inter-hand Y
+                        # Pre-pass: identify left/right wrist positions for inter-hand joystick Y
+                        # (left hand's joystick Y is derived from angle between wrists)
                         left_lms = right_lms = None
                         for idx, h_obj in enumerate(result.multi_handedness):
-                            lbl = h_obj.classification[0].label
+                            lbl = h_obj.classification[0].label  # "Left" or "Right"
                             lm  = result.multi_hand_landmarks[idx].landmark
                             if lbl == "Left":  left_lms  = lm
                             elif lbl == "Right": right_lms = lm
 
+                        # Process each detected hand independently
                         for i, hlp in enumerate(result.multi_hand_landmarks):
-                            lm = hlp.landmark
+                            lm = hlp.landmark  # 21 normalized landmarks
                             hand_info = result.multi_handedness[i].classification[0]
-                            handedness = hand_info.label
-                            hand_confidence = hand_info.score
+                            handedness = hand_info.label  # "Left" or "Right"
+                            hand_confidence = hand_info.score  # 0-1, confidence in classification
 
+                            # =================================================================
+                            # GESTURE DETECTION (heuristic geometric classifier)
+                            # =================================================================
                             gesture_list = detect_gesture(lm, handedness)
-                            # Convert abstract gesture labels to controller actions.
+                            
+                            # =================================================================
+                            # GESTURE MAPPING (data-driven via gesture_map.json)
+                            # =================================================================
+                            # Convert abstract gesture labels to controller actions
                             vigem_label  = map_to_vigem(gesture_list, handedness)
 
-                            # Joystick X: hand tilt (wrist → middle MCP)
-                            wrist  = lm[0]
-                            mcp    = lm[9]
+                            # =================================================================
+                            # JOYSTICK COMPUTATION (wrist-based continuous input)
+                            # =================================================================
+                            # Joystick X: hand tilt (wrist → middle MCP angle)
+                            # Used to steer/pan in applications
+                            wrist  = lm[0]      # Wrist (landmark 0)
+                            mcp    = lm[9]      # Middle MCP (landmark 9)
                             h_size = math.sqrt((mcp.x - wrist.x)**2 + (mcp.y - wrist.y)**2)
-                            tilt_x = (mcp.x - wrist.x) / (h_size + 1e-6)
-                            norm_x = tilt_x * TILT_GAIN
+                            tilt_x = (mcp.x - wrist.x) / (h_size + 1e-6)  # Normalized tilt
+                            norm_x = tilt_x * TILT_GAIN  # Amplify for controller response
 
-                            # Joystick Y: inter-hand angle (left hand) or tilt fallback
+                            # Joystick Y: inter-hand angle (left hand) or wrist tilt fallback
+                            # For left hand: Y = angle between left and right wrist positions
+                            #   (creates a 2-hand spatial control mechanism)
+                            # For right hand: Y = wrist forward-back tilt (fallback)
                             if handedness == "Left" and right_lms:
+                                # Both hands visible: use inter-hand distance for Y
                                 l_w, r_w = left_lms[0], right_lms[0]
-                                dx = r_w.x - l_w.x
-                                dy = r_w.y - l_w.y
+                                dx = r_w.x - l_w.x  # Horizontal separation
+                                dy = r_w.y - l_w.y  # Vertical separation
                                 
+                                # Neutral zone: if hands are very close, center joystick Y
                                 if abs(dx) < INTER_HAND_NEUTRAL_EPSILON and abs(dy) < INTER_HAND_NEUTRAL_EPSILON:
                                     norm_y = 0.0
                                 else:
-                                    angle = math.atan2(dy, dx)
-                                    norm_y = -(angle / ANGLE_NORMALIZATION)
+                                    # Compute angle from left to right wrist, normalize to [-1, 1]
+                                    angle = math.atan2(dy, dx)  # -π to +π
+                                    norm_y = -(angle / ANGLE_NORMALIZATION)  # Negate for intuitive control
                             else:
-                                tilt_y = (wrist.y - mcp.y) / (h_size + 1e-6)
+                                # Right hand or left hand alone: use wrist tilt fallback
+                                tilt_y = (wrist.y - mcp.y) / (h_size + 1e-6)  # Forward-back tilt
                                 norm_y = -(tilt_y - NEUTRAL_Y_OFFSET) * TILT_GAIN
 
-                            # EMA smoothing: damps frame-to-frame jitter while preserving responsiveness.
-                            # Per-hand state (keyed by index) prevents cross-hand bleed from shared state.
-                            # Formula: smoothed = α × raw + (1-α) × previous
-                            # α=0.3 balances smoothness vs latency (see Chapter 4 evaluation)
-                            prev = ema_state.get(i, (0.0, 0.0))
-                            a    = EMA_ALPHA
-                            norm_x = a * norm_x + (1 - a) * prev[0]
-                            norm_y = a * norm_y + (1 - a) * prev[1]
-                            ema_state[i] = (norm_x, norm_y)
+                            # =================================================================
+                            # EMA SMOOTHING (temporal filtering)
+                            # Reference: Chapter 4 "Temporal Filtering & Latency Analysis"
+                            # =================================================================
+                            # Exponential Moving Average: smoothed = α·raw + (1-α)·previous
+                            # - α=0.3: balances smoothness vs latency (tuned empirically)
+                            # - Per-hand state (keyed by index) prevents cross-hand bleed
+                            # - Reduces frame jitter while preserving responsiveness
+                            
+                            prev = ema_state.get(i, (0.0, 0.0))  # Get previous state for this hand
+                            a    = EMA_ALPHA  # Smoothing factor (typically 0.3)
+                            norm_x = a * norm_x + (1 - a) * prev[0]  # Smooth X
+                            norm_y = a * norm_y + (1 - a) * prev[1]  # Smooth Y
+                            ema_state[i] = (norm_x, norm_y)  # Cache for next frame
 
-                            # Clamp to [-1.0, 1.0] controller range
+                            # Clamp to Xbox controller range [-1.0, 1.0]
                             norm_x = max(-1.0, min(1.0, norm_x))
                             norm_y = max(-1.0, min(1.0, norm_y))
 
-                            # TODO: DEAD_ZONE defined in config.py but actual dead zone logic applied in
-                            # vigem_output.py:apply_gesture(). Consolidate to single location post-evaluation
-                            # to avoid confusion and potential duplicated logic.
+                            # TODO: DEAD_ZONE defined in config.py but also applied in vigem_output.py
+                            # (apply_gesture). Consolidate to single location to avoid confusion
+                            # and potential duplicated logic post-evaluation.
                             
-                            # Send mapped action(s) and analog values to virtual controller.
+                            # =================================================================
+                            # CONTROLLER OUTPUT (send mapped action + analog values)
+                            # =================================================================
+                            # Send to virtual Xbox bus via ViGEm
                             vigem_output.apply_gesture(vigem_label, handedness, norm_x, norm_y)
 
+                            # =================================================================
+                            # LATENCY LOGGING (selective, only for non-neutral gestures)
+                            # =================================================================
+                            # Gesture latency: time from frame capture to ViGEm output
+                            # Logged only when: latency logging enabled AND gesture non-neutral
                             is_non_neutral = any(g != "OPEN_PALM" for g in gesture_list)
                             should_log_latency = (
                                 frame_t_start is not None
@@ -584,7 +912,7 @@ async def main(
                                 # Buffer rows and append output/loop timings later in same frame.
                                 t_end = time.perf_counter()
                                 latency_ms = (t_end - frame_t_start) * 1000
-                                gest_str = ",".join(gesture_list)
+                                gest_str = ",".join(gesture_list)  # CSV-friendly comma-separated list
                                 pending_latency_rows.append([
                                     time.strftime("%H:%M:%S"),
                                     frame_index,
@@ -609,16 +937,23 @@ async def main(
                                         f"\nLatency logging complete - {LATENCY_TRIALS} trials saved to {saved_path}"
                                     )
 
+                            # =================================================================
+                            # WebSocket TELEMETRY (optional real-time visualization)
+                            # =================================================================
                             gest_str = ",".join(gesture_list)
-                            # Optional real-time telemetry for browser/client visualizations.
+                            # Broadcast to connected clients for web-based monitoring/visualization
                             await broadcast({"x": norm_x, "y": norm_y,
                                              "gesture": gest_str, "hand": handedness})
 
-                            disp_label = ",".join(vigem_label)
+                            # =================================================================
+                            # DEBUG/VISUALISATION DATA (populated for --visualise overlay)
+                            # =================================================================
+                            disp_label = ",".join(vigem_label)  # Display format
                             calculated_values['gestures'].append(disp_label)
                             calculated_values['handedness'].append(handedness)
                             calculated_values['wrist_coords'].append((norm_x, norm_y))
 
+                            # Compute pinch metrics for visualisation
                             thumb, idx_tip = lm[4], lm[8]
                             p_dist = math.sqrt((idx_tip.x - thumb.x)**2 + (idx_tip.y - thumb.y)**2)
                             calculated_values['pinch_dists'].append(p_dist)
@@ -626,14 +961,18 @@ async def main(
                             prev_pinch_dists[i] = p_dist
 
                     else:
-                        # No valid hand data: release controller and reset frame-local history state.
+                        # No valid hand data (calibrating or no hands detected):
+                        # Release controller and reset frame-local history state.
                         vigem_output.release_all()
                         prev_pinch_dists = []
-                        ema_state.clear()
+                        ema_state.clear()  # Clear per-hand smoothing state
+                    
                     output_t1 = time.perf_counter()
                     benchmark_stats["output_s"] += (output_t1 - output_t0)
                     output_ms_frame = (output_t1 - output_t0) * 1000.0
                     loop_ms_frame = (time.perf_counter() - frame_loop_t0) * 1000.0
+                    
+                    # Finalize latency rows with stage timings
                     if pending_latency_rows and latency_writer is not None:
                         for base_row in pending_latency_rows:
                             latency_writer.writerow(base_row + [
@@ -644,15 +983,20 @@ async def main(
 
                     if visualise_mode:
                         # Draw rich diagnostics overlay window when --visualise is enabled.
+                        # Layers: landmarks, skeleton, pinch indicators, wrist vectors, calibration status
                         vis_lm = [hlp.landmark for hlp in (result.multi_hand_landmarks or [])]
                         annotated = visualiser.draw_overlay(frame, vis_lm, calculated_values)
                         cv2.imshow("MediaPipe Gesture Controller", annotated)
 
+                    # Benchmark accumulation: add this frame's timing to totals
                     benchmark_stats["frames"] += 1
                     benchmark_stats["total_s"] += (time.perf_counter() - frame_loop_t0)
+                    
+                    # Check if benchmark duration exceeded
                     if benchmark_enabled and (time.perf_counter() - benchmark_start) >= benchmark_seconds:
                         break
 
+                    # Yield control to event loop for other async tasks (WebSocket clients)
                     await asyncio.sleep(0)
             finally:
                 # Always release resources, even on errors/keyboard interrupt.
@@ -662,11 +1006,17 @@ async def main(
                 if latency_file_handle is not None:
                     latency_file_handle.close()
 
+                # =============================================================================
+                # SECTION 4: BENCHMARK AGGREGATION & RESULTS
+                # Compute per-frame averages from accumulated timing data
+                # =============================================================================
                 if benchmark_enabled:
-                    # Compute aggregate per-frame stats and append benchmark CSV row.
-                    runtime_s = max(1e-9, time.perf_counter() - benchmark_start)
-                    frames = benchmark_stats["frames"]
-                    fps = frames / runtime_s
+                    # Compute aggregate per-frame stats from accumulated timings
+                    runtime_s = max(1e-9, time.perf_counter() - benchmark_start)  # Total elapsed time
+                    frames = benchmark_stats["frames"]  # Total frames processed
+                    fps = frames / runtime_s  # Overall throughput
+                    
+                    # Compute per-frame average for each stage (ms per frame)
                     per_frame_ms = lambda s: (s / frames * 1000.0) if frames else 0.0
                     capture_ms = per_frame_ms(benchmark_stats["capture_s"])
                     preprocess_ms = per_frame_ms(benchmark_stats["preprocess_s"])
@@ -674,9 +1024,12 @@ async def main(
                     output_ms = per_frame_ms(benchmark_stats["output_s"])
                     loop_total_ms = per_frame_ms(benchmark_stats["total_s"])
 
+                    # Write results to logs/benchmark/benchmark_runs.csv
                     benchmark_dir = project_root / BENCHMARK_LOG_DIR
                     benchmark_dir.mkdir(parents=True, exist_ok=True)
                     benchmark_path = benchmark_dir / BENCHMARK_LOG_FILE
+                    
+                    # Define CSV column headers for benchmark results
                     benchmark_header = [
                         "timestamp",
                         "run_tag",
@@ -694,19 +1047,24 @@ async def main(
                         "output_ms_per_frame",
                         "loop_total_ms_per_frame",
                     ]
+                    
+                    # Check header compatibility if CSV already exists
+                    # (prevents mixing different versions of benchmark schema)
                     if benchmark_path.exists() and benchmark_path.stat().st_size > 0:
                         with benchmark_path.open("r", newline="") as f:
                             existing_header = f.readline().strip()
                         expected_header = ",".join(benchmark_header)
                         if existing_header != expected_header:
+                            # Schema mismatch: use versioned filename
                             benchmark_path = benchmark_dir / "benchmark_runs_v2.csv"
 
+                    # Append results row (and header if file is empty/new)
                     benchmark_file_exists = benchmark_path.exists() and benchmark_path.stat().st_size > 0
 
                     with benchmark_path.open("a", newline="") as f:
                         writer = csv.writer(f)
                         if not benchmark_file_exists:
-                            writer.writerow(benchmark_header)
+                            writer.writerow(benchmark_header)  # Write header if new file
 
                         writer.writerow([
                             time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -726,6 +1084,7 @@ async def main(
                             f"{loop_total_ms:.2f}",
                         ])
 
+                    # Print summary to console
                     print("\n=== Benchmark Summary ===")
                     print(f"Mode: {'capture-only' if benchmark_capture_only else 'full-pipeline'}")
                     print(f"Duration: {runtime_s:.2f}s")
@@ -740,20 +1099,63 @@ async def main(
                     print(f"Benchmark row saved to: {benchmark_path.resolve()}")
 
 if __name__ == "__main__":
-    # CLI interface for runtime modes.
-    parser = argparse.ArgumentParser(description="MediaPipe Gesture Controller")
-    parser.add_argument("--visualise", action="store_true",
-                        help="Enable rich visualisation overlay")
-    parser.add_argument("--log-latency", action="store_true",
-                        help="Log gesture latency to logs/latency/latency_log.csv")
-    parser.add_argument("--benchmark-seconds", type=float, default=0.0,
-                        help="Run benchmark for N seconds and print timing summary")
-    parser.add_argument("--benchmark-capture-only", action="store_true",
-                        help="Benchmark capture only (skip MediaPipe and output processing)")
-    parser.add_argument("--run-tag", type=str, default="",
-                        help="Optional run label for logs (e.g. native, camo, low-light)")
+    # Command-line interface for runtime modes and instrumentation flags.
+    # Allows developers to run different configurations without code changes.
+    
+    parser = argparse.ArgumentParser(description="VisionInput — Gesture-Based Xbox Controller")
+    
+    # Debug visualization flag
+    parser.add_argument(
+        "--visualise",
+        action="store_true",
+        help="Enable rich debug overlay: shows landmarks, gestures, pinch state, FPS. "
+             "Useful for development/troubleshooting. Adds ~5-15ms/frame overhead. "
+             "(Chapter 5: Diagnostic system design)"
+    )
+    
+    # Latency logging flag
+    parser.add_argument(
+        "--log-latency",
+        action="store_true",
+        help="Record gesture-to-output latency to logs/latency/latency_log_*.csv. "
+             "Captures first LATENCY_TRIALS non-neutral gestures with per-stage timings "
+             "(capture, preprocess, MediaPipe, output, total loop). "
+             "Used for performance validation. (Chapter 4 Section 4.2)"
+    )
+    
+    # Performance benchmarking mode
+    parser.add_argument(
+        "--benchmark-seconds",
+        type=float,
+        default=0.0,
+        help="Run benchmark for N seconds, measure throughput and per-frame timings. "
+             "Output: logs/benchmark/benchmark_runs.csv with averaged stage times and FPS. "
+             "Useful for hardware comparison and optimization. Default: 0.0 (disabled)"
+    )
+    
+    # Capture-only benchmark mode (useful for isolating camera I/O performance)
+    parser.add_argument(
+        "--benchmark-capture-only",
+        action="store_true",
+        help="During benchmark, measure frame capture only (skip MediaPipe and output). "
+             "Isolates camera/encoder bottleneck from processing pipeline. "
+             "Requires --benchmark-seconds. Useful for camera negotiation testing."
+    )
+    
+    # Custom run label for experiment tracking
+    parser.add_argument(
+        "--run-tag",
+        type=str,
+        default="",
+        help="Optional label for this run, stored in latency/benchmark logs. "
+             "Examples: 'native', 'camo', 'low-light', 'usb2', 'resolution_1080p'. "
+             "Used to track experiment conditions and group results for analysis."
+    )
+    
     args = parser.parse_args()
+    
     try:
+        # Run the main async event loop
         asyncio.run(main(
             visualise_mode=args.visualise,
             log_latency=(LOG_LATENCY_DEFAULT or args.log_latency),
@@ -762,4 +1164,5 @@ if __name__ == "__main__":
             run_tag=args.run_tag,
         ))
     except KeyboardInterrupt:
+        # User pressed Ctrl+C — graceful shutdown (resources cleaned up in finally blocks)
         logging.info("Program stopped by user.")

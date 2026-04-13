@@ -52,7 +52,7 @@ CALIBRATION_DURATION = 3.0
 # If True, latency logging starts without requiring --log-latency.
 LOG_LATENCY_DEFAULT = False
 # Number of non-neutral samples to capture before auto-stop.
-LATENCY_TRIALS = 200
+LATENCY_TRIALS = 500
 # Output location for latency CSV files.
 LATENCY_LOG_DIR = "logs/latency"
 LATENCY_LOG_FILE = "latency_log.csv"
