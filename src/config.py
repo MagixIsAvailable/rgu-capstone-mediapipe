@@ -52,7 +52,7 @@ CALIBRATION_DURATION = 3.0
 # If True, latency logging starts without requiring --log-latency.
 LOG_LATENCY_DEFAULT = False
 # Number of non-neutral samples to capture before auto-stop.
-LATENCY_TRIALS = 500
+LATENCY_TRIALS = 100
 # Output location for latency CSV files.
 LATENCY_LOG_DIR = "logs/latency"
 LATENCY_LOG_FILE = "latency_log.csv"
@@ -69,8 +69,8 @@ TRACKING_CONFIDENCE = 0.5
 # Camera
 # Requested capture mode; actual negotiated mode depends on camera/driver.
 CAMERA_REQUEST_FPS = 60
-CAMERA_REQUEST_WIDTH = 1920
-CAMERA_REQUEST_HEIGHT = 1080
+CAMERA_REQUEST_WIDTH = 3840
+CAMERA_REQUEST_HEIGHT = 2160
 
 # Two-hand control
 # Neutral tolerance for tiny inter-hand deltas.

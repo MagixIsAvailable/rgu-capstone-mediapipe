@@ -37,12 +37,12 @@ def parse_log_file(path: Path):
         with path.open("r", encoding="utf-8", errors="replace", newline="") as f:
             rows = list(csv.reader(f))
 
-        # Find first real data header row (starts with timestamp or session_created_at)
+        # Find first real data header row (must start with timestamp)
         header_idx = None
         for i, row in enumerate(rows):
             if row:
                 first_col = row[0].strip().lower()
-                if first_col in ("timestamp", "session_created_at"):
+                if first_col == "timestamp":
                     header_idx = i
                     break
 
@@ -76,8 +76,10 @@ def parse_log_file(path: Path):
             elif len(row) > len(header):
                 row = row[:len(header)]
 
-            rec = {header[j]: row[j].strip() for j in range(len(header))}
-            rec.update(metadata)
+            rec = {
+                **metadata,
+                **{header[j]: row[j].strip() for j in range(len(header))},
+            }
             rec["source_file"] = path.name
             rec["source_path"] = str(path.as_posix())
             records.append(rec)
@@ -138,7 +140,30 @@ if not tables:
 
 merged = pd.concat(tables, ignore_index=True, sort=False)
 merged = clean_for_excel(merged)
-merged.to_excel(OUTPUT_FILE, index=False)
+
+# Keep a unified sheet and also split heterogeneous schemas for easier analysis.
+frame_mask = pd.Series(False, index=merged.index)
+benchmark_mask = pd.Series(False, index=merged.index)
+
+if "latency_ms" in merged.columns:
+    frame_mask = frame_mask | merged["latency_ms"].notna()
+if "frame_index" in merged.columns:
+    frame_mask = frame_mask | merged["frame_index"].notna()
+
+if "duration_s" in merged.columns:
+    benchmark_mask = benchmark_mask | merged["duration_s"].notna()
+if "frames" in merged.columns:
+    benchmark_mask = benchmark_mask | merged["frames"].notna()
+
+frame_logs = merged.loc[frame_mask].copy()
+benchmark_runs = merged.loc[benchmark_mask].copy()
+
+with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as writer:
+    merged.to_excel(writer, sheet_name="all_logs", index=False)
+    if not frame_logs.empty:
+        frame_logs.to_excel(writer, sheet_name="frame_logs", index=False)
+    if not benchmark_runs.empty:
+        benchmark_runs.to_excel(writer, sheet_name="benchmark_runs", index=False)
 
 print(f"\nUnified logs exported to: {OUTPUT_FILE}")
 print(f"Total rows: {len(merged)}")
