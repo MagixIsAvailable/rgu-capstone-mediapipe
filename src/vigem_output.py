@@ -25,6 +25,13 @@ try:
 except ImportError:
     logging.error("[ViGEm] Error: 'vgamepad' module not found. Please run 'pip install vgamepad'.")
 
+# ============================================================================
+# ATTRIBUTION NOTE (SIGNPOSTED SECTION)
+# Source type: Original implementation by project author
+# Pattern used: Standard singleton/lazy-initialization accessor
+# External API reference: vgamepad.VX360Gamepad constructor and update methods
+# Delimitation: This note applies to _get_gamepad() below only
+# ============================================================================
 def _get_gamepad():
     """Singleton accessor for the virtual Xbox 360 gamepad instance.
     

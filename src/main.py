@@ -160,6 +160,13 @@ except json.JSONDecodeError:
 # ----------------------------------------------------------------
 connected_clients = set()
 
+# ============================================================================
+# ATTRIBUTION NOTE (SIGNPOSTED SECTION)
+# Source type: Original implementation by project author
+# Pattern used: Standard async WebSocket connection-lifecycle management
+# External API reference: websockets.serve / websocket.wait_closed
+# Delimitation: This note applies to websocket_handler() below only
+# ============================================================================
 async def websocket_handler(websocket):
     """Handle incoming WebSocket client connection with connection cap enforcement.
     
@@ -211,6 +218,13 @@ async def websocket_handler(websocket):
         connected_clients.discard(websocket)
         logging.info(f"Client disconnected: {websocket.remote_address}")
 
+    # ============================================================================
+    # ATTRIBUTION NOTE (SIGNPOSTED SECTION)
+    # Source type: Original implementation by project author
+    # Pattern used: Standard pub-sub broadcast with dead-client cleanup
+    # External API reference: websockets send/ConnectionClosed semantics
+    # Delimitation: This note applies to broadcast() below only
+    # ============================================================================
 async def broadcast(message_dict):
     """Broadcast a JSON message to all connected WebSocket clients.
     
@@ -455,6 +469,26 @@ def map_to_vigem(gesture_list: list[str], handedness: str) -> list[str]:
     # left hand actions under unprefixed keys for clarity.
     normalized = [g.replace("left_", "") for g in gesture_list]
     return map_hand_actions("Left", normalized)
+
+
+# ============================================================================
+# ATTRIBUTION NOTE (SIGNPOSTED SECTION)
+# Source type: Original implementation by project author
+# Pattern used: Standard Exponential Moving Average (EMA) filter
+# Formula: smoothed = alpha * new + (1 - alpha) * previous
+# Delimitation: This note applies to ema_smooth_pair() below only
+# ============================================================================
+def ema_smooth_pair(
+    raw_x: float,
+    raw_y: float,
+    prev_x: float,
+    prev_y: float,
+    alpha: float,
+) -> tuple[float, float]:
+    """Apply EMA smoothing to 2D joystick values (x, y)."""
+    smooth_x = alpha * raw_x + (1 - alpha) * prev_x
+    smooth_y = alpha * raw_y + (1 - alpha) * prev_y
+    return smooth_x, smooth_y
 
 # =============================================================================
 # SECTION 5: FRAME-SYNCHRONOUS MAIN LOOP & OUTPUT
@@ -886,9 +920,14 @@ async def main(
                             # - Reduces frame jitter while preserving responsiveness
                             
                             prev = ema_state.get(i, (0.0, 0.0))  # Get previous state for this hand
-                            a    = EMA_ALPHA  # Smoothing factor (typically 0.3)
-                            norm_x = a * norm_x + (1 - a) * prev[0]  # Smooth X
-                            norm_y = a * norm_y + (1 - a) * prev[1]  # Smooth Y
+                            a = EMA_ALPHA  # Smoothing factor (typically 0.3)
+                            norm_x, norm_y = ema_smooth_pair(
+                                norm_x,
+                                norm_y,
+                                prev[0],
+                                prev[1],
+                                a,
+                            )
                             ema_state[i] = (norm_x, norm_y)  # Cache for next frame
 
                             # Clamp to Xbox controller range [-1.0, 1.0]
