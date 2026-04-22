@@ -1,10 +1,11 @@
-"""VisionInput — Gesture-to-Controller System
-==========================================
-BSc (Hons) Computing & Creative Design Capstone Project
-Robert Gordon University | CM4134 Honours Project
+"""
+Module: main.py
+Project: VisionInput — Gesture-Based Controller for Immersive Projection Environments
+Author: Michal Lazovy | RGU CM4134 Honours Capstone 2026
+Supervisor: Dr John N.A. Brown | Partner: James Hutton Institute, Aberdeen
 
-This module implements a vision-based gesture controller that translates
-hand movements into Xbox controller inputs via MediaPipe and ViGEm.
+Purpose:
+Core runtime orchestration for the VisionInput pipeline. Captures camera frames, performs MediaPipe hand landmark inference, classifies gestures using deterministic geometric heuristics, maps gestures to controller actions via JSON configuration, applies temporal smoothing and dead-zone handling, then forwards outputs to a virtual Xbox 360 controller through the ViGEm layer. This module also manages WebSocket telemetry, visual debug overlays, latency logging, and benchmark instrumentation.
 
 Architecture (matches Chapter 3 dissertation structure):
 ├── Vision Layer (Section 3.2)
@@ -24,10 +25,17 @@ Key Files:
 - gesture_map.json: Gesture-to-controller mapping (runtime source of truth)
 - visualiser.py: Debug overlay (--visualise flag)
 
-Author: Michal Lazovy
-Supervisor: Dr John N.A. Brown
-Last Updated: April 2026
+
+Usage:
+Run directly as the application entry point.
+Examples:
+
+python main.py
+python main.py --visualise
+python main.py --log-latency
+python main.py --benchmark-seconds 30 --run-tag native
 """
+
 import cv2
 import sys
 import time

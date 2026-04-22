@@ -1,4 +1,20 @@
-"""Loads gesture mapping from JSON and exposes mapping helpers."""
+"""
+Module: gesture_mapping.py
+Project: VisionInput — Gesture-Based Controller for Immersive Projection Environments
+Author: Michal Lazovy | RGU CM4134 Honours Capstone 2026
+Supervisor: Dr John N.A. Brown | Partner: James Hutton Institute, Aberdeen
+
+Purpose:
+Configuration and mapping layer for the VisionInput pipeline. Loads gesture-to-action mappings from JSON and resolves controller actions for left and right hands. Supports single-gesture mappings and multi-gesture combo rules with optional priority ordering, then returns neutral fallbacks when no valid mapping exists. This module centralises gesture/action translation only — no camera capture, model inference, or controller output logic is contained here.
+
+Dependencies:
+json
+pathlib
+
+Usage:
+Imported by main.py and output modules to convert detected gesture labels into controller action labels.
+Not run directly.
+"""
 
 import json
 from pathlib import Path

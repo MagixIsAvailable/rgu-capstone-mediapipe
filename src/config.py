@@ -69,8 +69,8 @@ TRACKING_CONFIDENCE = 0.5
 # Camera
 # Requested capture mode; actual negotiated mode depends on camera/driver.
 CAMERA_REQUEST_FPS = 60
-CAMERA_REQUEST_WIDTH = 3840
-CAMERA_REQUEST_HEIGHT = 2160
+CAMERA_REQUEST_WIDTH = 1920
+CAMERA_REQUEST_HEIGHT = 1080
 
 # Two-hand control
 # Neutral tolerance for tiny inter-hand deltas.
