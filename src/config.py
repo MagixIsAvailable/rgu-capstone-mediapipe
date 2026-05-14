@@ -46,7 +46,11 @@ PINCH_PINKY = 0.08
 
 # Startup
 # Time window before controller output activates.
-CALIBRATION_DURATION = 3.0
+CALIBRATION_DURATION = 0.5  # seconds (short warmup before gesture detection)
+
+# Activation (burst) settings
+ACTIVATION_BURSTS_REQUIRED = 3
+ACTIVATION_MIN_GAP_S = 0.3  # minimum gap between bursts to debounce
 
 # Logging
 # If True, latency logging starts without requiring --log-latency.
@@ -77,3 +81,9 @@ CAMERA_REQUEST_HEIGHT = 1080
 INTER_HAND_NEUTRAL_EPSILON = 0.05
 # Scales inter-hand angle to joystick Y response.
 ANGLE_NORMALIZATION = 0.628  # approximately pi/5
+
+# Window behaviour (OpenCV window flags)
+WINDOW_ALWAYS_ON_TOP = True
+
+# Activation reset: if bursts are not completed within this window, reset count
+ACTIVATION_RESET_S = 5.0

@@ -39,6 +39,7 @@ python main.py --benchmark-seconds 30 --run-tag native
 import cv2
 import sys
 import time
+from enum import Enum
 import csv
 import argparse
 import logging
@@ -99,6 +100,10 @@ from config import (
     CAMERA_REQUEST_HEIGHT,
     INTER_HAND_NEUTRAL_EPSILON,
     ANGLE_NORMALIZATION,
+    ACTIVATION_BURSTS_REQUIRED,
+    ACTIVATION_MIN_GAP_S,
+    WINDOW_ALWAYS_ON_TOP,
+    ACTIVATION_RESET_S,
 )
 from gesture_mapping import map_hand_actions
 
@@ -107,6 +112,11 @@ import visualiser
 
 # MediaPipe legacy Hands solution handle used for detector construction.
 mp_hands = mp.solutions.hands
+# Application state for activation sequence
+class AppState(Enum):
+    WARMUP = 0
+    AWAITING_ACTIVATION = 1
+    ACTIVE = 2
 # Directory of this file; used to resolve camera config and project-relative logs.
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -655,6 +665,15 @@ async def main(
             "output_s": 0.0,
             "total_s": 0.0,
         }
+        # Create a resizable window and optionally set always-on-top for Windows
+        try:
+            cv2.namedWindow("MediaPipe Gesture Controller", cv2.WINDOW_NORMAL)
+            cv2.resizeWindow("MediaPipe Gesture Controller", 640, 480)
+            if WINDOW_ALWAYS_ON_TOP:
+                # Best-effort: some OpenCV builds/platforms may ignore this
+                cv2.setWindowProperty("MediaPipe Gesture Controller", cv2.WND_PROP_TOPMOST, 1)
+        except Exception:
+            logging.debug("Could not set OpenCV window properties (platform limitation)")
         if benchmark_enabled:
             logging.info(
                 "Benchmark mode enabled: %.1fs (%s)",
@@ -668,6 +687,14 @@ async def main(
         frame_index = 0
         read_failed_count = 0
         frame_time_window = deque()
+
+        # Activation state machine variables
+        state = AppState.WARMUP
+        warmup_start = calibration_start
+        burst_count = 0
+        last_burst_open = False
+        last_burst_time = 0.0
+        is_output_enabled = False
 
         # EMA state keyed by hand index — fixes cross-hand bleed
         ema_state = {}
@@ -821,24 +848,40 @@ async def main(
                     else:
                         fps_rolling_1s = fps
 
-                    # Check if still in calibration phase
+                    # Check and drive activation state machine
                     elapsed = now - calibration_start
                     if benchmark_enabled:
                         # Benchmark mode should measure steady-state processing, not startup calibration delay.
                         elapsed = CALIBRATION_DURATION  # Skip directly to end of calibration
-                    is_calibrating = elapsed < CALIBRATION_DURATION
+
+                    # State transitions
+                    if state == AppState.WARMUP:
+                        if elapsed >= CALIBRATION_DURATION:
+                            state = AppState.AWAITING_ACTIVATION
+                            warmup_start = now
+                            burst_count = 0
+                            last_burst_open = False
+                            last_burst_time = 0.0
+                            is_output_enabled = False
+
+                    # If awaiting activation and too much time passed since last burst, reset
+                    if state == AppState.AWAITING_ACTIVATION and (now - last_burst_time) > ACTIVATION_RESET_S:
+                        burst_count = 0
 
                     calculated_values = {
                         'fps': fps,
-                        'calibration_status': "calibrating" if is_calibrating else "calibrated",
-                        'calibration_time_remain': max(0, CALIBRATION_DURATION - elapsed),
+                        'calibration_status': "calibrating" if state == AppState.WARMUP else "calibrated",
+                        'calibration_time_remain': max(0, CALIBRATION_DURATION - elapsed) if state == AppState.WARMUP else 0,
                         'gestures': [], 'handedness': [],
-                        'pinch_dists': [], 'pinch_speeds': [], 'wrist_coords': []
+                        'pinch_dists': [], 'pinch_speeds': [], 'wrist_coords': [],
+                        'activation_burst_count': burst_count,
+                        'activation_required': ACTIVATION_BURSTS_REQUIRED,
+                        'app_state': state.name,
                     }
 
                     output_t0 = time.perf_counter()
                     pending_latency_rows = []
-                    if result.multi_hand_landmarks and not is_calibrating:
+                    if result.multi_hand_landmarks and state != AppState.WARMUP:
                         # =============================================================================
                         # STAGE 3: GESTURE DETECTION & MAPPING
                         # Applies detect_gesture() → map_to_vigem() → EMA smoothing → ViGEm output
@@ -871,6 +914,24 @@ async def main(
                             # =================================================================
                             gesture_list = detect_gesture(lm, handedness)
                             
+                            # =================================================================
+                            # ACTIVATION: while awaiting activation, watch for OPEN_PALM bursts
+                            # =================================================================
+                            if state == AppState.AWAITING_ACTIVATION:
+                                is_open = (gesture_list == ["OPEN_PALM"]) or ("OPEN_PALM" in gesture_list)
+                                # Rising edge detection + debounce
+                                if is_open and not last_burst_open and (now - last_burst_time) > ACTIVATION_MIN_GAP_S:
+                                    burst_count += 1
+                                    last_burst_time = now
+                                    last_burst_open = True
+                                    logging.info(f"Activation burst {burst_count}/{ACTIVATION_BURSTS_REQUIRED}")
+                                    if burst_count >= ACTIVATION_BURSTS_REQUIRED:
+                                        state = AppState.ACTIVE
+                                        is_output_enabled = True
+                                        logging.info("Activation complete — controller output enabled")
+                                elif not is_open:
+                                    last_burst_open = False
+
                             # =================================================================
                             # GESTURE MAPPING (data-driven via gesture_map.json)
                             # =================================================================
@@ -941,8 +1002,12 @@ async def main(
                             # =================================================================
                             # CONTROLLER OUTPUT (send mapped action + analog values)
                             # =================================================================
-                            # Send to virtual Xbox bus via ViGEm
-                            vigem_output.apply_gesture(vigem_label, handedness, norm_x, norm_y)
+                            # Send to virtual Xbox bus via ViGEm if activation complete
+                            if is_output_enabled:
+                                vigem_output.apply_gesture(vigem_label, handedness, norm_x, norm_y)
+                            else:
+                                # Suppress output until activation; ensure controllers released
+                                vigem_output.release_all()
 
                             # =================================================================
                             # LATENCY LOGGING (selective, only for non-neutral gestures)

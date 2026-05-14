@@ -38,6 +38,16 @@ For this repository, Python 3.11 remains the validated baseline used for develop
 
 ---
 
+## Branches
+
+- **main**: Dissertation submission — stable, graded version. Do not modify this branch.
+- **feature/future-work**: Active development branch for user-requested enhancements.
+   - Gesture-Based Startup: replace 3s calibration with short warmup + 3 open-palm bursts to activate controller output.
+   - Resizable Window: use OpenCV `WINDOW_NORMAL` to allow window resizing.
+   - Always-On-Top: optional topmost window flag for Windows to keep the visualiser visible.
+   - Changes are committed to `feature/future-work` to preserve `main` for grading.
+
+
 ## Hardware
 
 ### Developed & Tested On

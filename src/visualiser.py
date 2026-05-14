@@ -133,6 +133,21 @@ def to_pixel(landmark, shape):
     """
     return int(landmark.x * shape[1]), int(landmark.y * shape[0])
 
+
+def draw_activation_indicator(frame, burst_count, bursts_required=3, pos=(40, 60)):
+    """Draw simple activation burst indicator (filled circles + text)."""
+    h, w = frame.shape[0], frame.shape[1]
+    x0, y0 = pos
+    # Draw label
+    cv2.putText(frame, f"Activation: {burst_count}/{bursts_required}", (x0 - 20, y0 - 20),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, WHITE, 1)
+    # Draw circles for each required burst
+    spacing = 24
+    for i in range(bursts_required):
+        cx = x0 + i * spacing
+        color = GREEN if i < burst_count else GREY
+        cv2.circle(frame, (cx, y0), 8, color, -1)
+
 def draw_overlay(frame, landmarks_list, calculated_values):
     """Render diagnostic overlay on camera frame with rich hand data visualization.
     
@@ -226,6 +241,13 @@ def draw_overlay(frame, landmarks_list, calculated_values):
         cv2.circle(overlay, (w//2 - 50, h - 25), 5, GREEN, -1)  # Filled circle
         cv2.putText(overlay, "CALIBRATED", (w//2 - 40, h - 20),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, GREEN, 2)
+
+    # Activation indicator (if main loop provided activation metadata)
+    act_count = calculated_values.get('activation_burst_count')
+    act_req = calculated_values.get('activation_required')
+    app_state = calculated_values.get('app_state')
+    if act_count is not None and act_req is not None and app_state == 'AWAITING_ACTIVATION':
+        draw_activation_indicator(overlay, act_count, act_req, pos=(60, 60))
 
     # Early exit if no hands detected
     if not landmarks_list:
