@@ -105,6 +105,7 @@ from config import (
     DEACTIVATION_BURSTS_REQUIRED,
     WINDOW_ALWAYS_ON_TOP,
     ACTIVATION_RESET_S,
+    ACTIVATION_BIMANUAL_WINDOW_S,
 )
 from gesture_mapping import map_hand_actions
 
@@ -692,14 +693,22 @@ async def main(
         # Activation / Deactivation state machine variables
         state = AppState.WARMUP
         warmup_start = calibration_start
-        # Activation (open-palm bursts)
-        burst_count = 0
-        last_burst_open = False
-        last_burst_time = 0.0
-        # Deactivation (closed-fist bursts)
-        deact_count = 0
-        last_deact_fist = False
-        last_deact_time = 0.0
+        # Activation (open-palm bursts) — per-hand tracking
+        burst_count_left = 0
+        burst_count_right = 0
+        last_burst_open_left = False
+        last_burst_open_right = False
+        last_burst_time_left = 0.0
+        last_burst_time_right = 0.0
+        activation_start_time = 0.0  # Track when activation sequence started
+        # Deactivation (closed-fist bursts) — per-hand tracking
+        deact_count_left = 0
+        deact_count_right = 0
+        last_deact_fist_left = False
+        last_deact_fist_right = False
+        last_deact_time_left = 0.0
+        last_deact_time_right = 0.0
+        deactivation_start_time = 0.0
         is_output_enabled = False
 
         # EMA state keyed by hand index — fixes cross-hand bleed
@@ -865,14 +874,23 @@ async def main(
                         if elapsed >= CALIBRATION_DURATION:
                             state = AppState.AWAITING_ACTIVATION
                             warmup_start = now
-                            burst_count = 0
-                            last_burst_open = False
-                            last_burst_time = 0.0
+                            burst_count_left = 0
+                            burst_count_right = 0
+                            last_burst_open_left = False
+                            last_burst_open_right = False
+                            last_burst_time_left = 0.0
+                            last_burst_time_right = 0.0
+                            activation_start_time = now
                             is_output_enabled = False
 
-                    # If awaiting activation and too much time passed since last burst, reset
-                    if state == AppState.AWAITING_ACTIVATION and (now - last_burst_time) > ACTIVATION_RESET_S:
-                        burst_count = 0
+                    # If awaiting activation and too much time passed since activation started, reset
+                    if state == AppState.AWAITING_ACTIVATION and (now - activation_start_time) > ACTIVATION_BIMANUAL_WINDOW_S:
+                        burst_count_left = 0
+                        burst_count_right = 0
+                        last_burst_open_left = False
+                        last_burst_open_right = False
+                        activation_start_time = now
+                        logging.info("Activation window expired, reset burst counts")
 
                     calculated_values = {
                         'fps': fps,
@@ -880,9 +898,11 @@ async def main(
                         'calibration_time_remain': max(0, CALIBRATION_DURATION - elapsed) if state == AppState.WARMUP else 0,
                         'gestures': [], 'handedness': [],
                         'pinch_dists': [], 'pinch_speeds': [], 'wrist_coords': [],
-                        'activation_burst_count': burst_count,
+                        'activation_burst_count_left': burst_count_left,
+                        'activation_burst_count_right': burst_count_right,
                         'activation_required': ACTIVATION_BURSTS_REQUIRED,
-                        'deactivation_burst_count': deact_count,
+                        'deactivation_burst_count_left': deact_count_left,
+                        'deactivation_burst_count_right': deact_count_right,
                         'deactivation_required': DEACTIVATION_BURSTS_REQUIRED,
                         'app_state': state.name,
                     }
@@ -923,47 +943,79 @@ async def main(
                             gesture_list = detect_gesture(lm, handedness)
                             
                             # =================================================================
-                            # ACTIVATION: while awaiting activation, watch for OPEN_PALM bursts
+                            # ACTIVATION: while awaiting activation, watch for OPEN_PALM bursts (BOTH hands required)
                             # =================================================================
                             if state == AppState.AWAITING_ACTIVATION:
                                 is_open = (gesture_list == ["OPEN_PALM"]) or ("OPEN_PALM" in gesture_list)
-                                # Rising edge detection + debounce for activation
-                                if is_open and not last_burst_open and (now - last_burst_time) > ACTIVATION_MIN_GAP_S:
-                                    burst_count += 1
-                                    last_burst_time = now
-                                    last_burst_open = True
-                                    logging.info(f"Activation burst {burst_count}/{ACTIVATION_BURSTS_REQUIRED}")
-                                    if burst_count >= ACTIVATION_BURSTS_REQUIRED:
-                                        state = AppState.ACTIVE
-                                        is_output_enabled = True
-                                        deact_count = 0
-                                        last_deact_fist = False
-                                        last_deact_time = 0.0
-                                        logging.info("Activation complete — controller output enabled")
-                                elif not is_open:
-                                    last_burst_open = False
+                                if handedness == "Left":
+                                    # Rising edge detection + debounce for left hand
+                                    if is_open and not last_burst_open_left and (now - last_burst_time_left) > ACTIVATION_MIN_GAP_S:
+                                        burst_count_left += 1
+                                        last_burst_time_left = now
+                                        last_burst_open_left = True
+                                        logging.info(f"Activation burst LEFT {burst_count_left}/{ACTIVATION_BURSTS_REQUIRED}")
+                                    elif not is_open:
+                                        last_burst_open_left = False
+                                elif handedness == "Right":
+                                    # Rising edge detection + debounce for right hand
+                                    if is_open and not last_burst_open_right and (now - last_burst_time_right) > ACTIVATION_MIN_GAP_S:
+                                        burst_count_right += 1
+                                        last_burst_time_right = now
+                                        last_burst_open_right = True
+                                        logging.info(f"Activation burst RIGHT {burst_count_right}/{ACTIVATION_BURSTS_REQUIRED}")
+                                    elif not is_open:
+                                        last_burst_open_right = False
+                                
+                                # Transition to ACTIVE only when BOTH hands reach required bursts
+                                if burst_count_left >= ACTIVATION_BURSTS_REQUIRED and burst_count_right >= ACTIVATION_BURSTS_REQUIRED:
+                                    state = AppState.ACTIVE
+                                    is_output_enabled = True
+                                    deact_count_left = 0
+                                    deact_count_right = 0
+                                    last_deact_fist_left = False
+                                    last_deact_fist_right = False
+                                    last_deact_time_left = 0.0
+                                    last_deact_time_right = 0.0
+                                    deactivation_start_time = now
+                                    logging.info("Activation complete (BOTH hands) — controller output enabled")
 
-                            # While ACTIVE: watch for closed-fist bursts to deactivate
+                            # While ACTIVE: watch for closed-fist bursts to deactivate (BOTH hands required)
                             if state == AppState.ACTIVE:
                                 # Define fist detection: all fingers bent (index, middle, ring, pinky)
                                 fist_needed = {"index_bent", "middle_bent", "ring_bent", "pinky_bent"}
                                 # For left-hand labels, they may be prefixed 'left_'
                                 fist_needed_left = {"left_index_bent", "left_middle_bent", "left_ring_bent", "left_pinky_bent"}
                                 is_fist = fist_needed.issubset(set(gesture_list)) or fist_needed_left.issubset(set(gesture_list))
-                                if is_fist and not last_deact_fist and (now - last_deact_time) > ACTIVATION_MIN_GAP_S:
-                                    deact_count += 1
-                                    last_deact_time = now
-                                    last_deact_fist = True
-                                    logging.info(f"Deactivation burst {deact_count}/{DEACTIVATION_BURSTS_REQUIRED}")
-                                    if deact_count >= DEACTIVATION_BURSTS_REQUIRED:
-                                        state = AppState.AWAITING_ACTIVATION
-                                        is_output_enabled = False
-                                        burst_count = 0
-                                        last_burst_open = False
-                                        last_burst_time = 0.0
-                                        logging.info("Deactivated — controller output disabled")
-                                elif not is_fist:
-                                    last_deact_fist = False
+                                
+                                if handedness == "Left":
+                                    if is_fist and not last_deact_fist_left and (now - last_deact_time_left) > ACTIVATION_MIN_GAP_S:
+                                        deact_count_left += 1
+                                        last_deact_time_left = now
+                                        last_deact_fist_left = True
+                                        logging.info(f"Deactivation burst LEFT {deact_count_left}/{DEACTIVATION_BURSTS_REQUIRED}")
+                                    elif not is_fist:
+                                        last_deact_fist_left = False
+                                elif handedness == "Right":
+                                    if is_fist and not last_deact_fist_right and (now - last_deact_time_right) > ACTIVATION_MIN_GAP_S:
+                                        deact_count_right += 1
+                                        last_deact_time_right = now
+                                        last_deact_fist_right = True
+                                        logging.info(f"Deactivation burst RIGHT {deact_count_right}/{DEACTIVATION_BURSTS_REQUIRED}")
+                                    elif not is_fist:
+                                        last_deact_fist_right = False
+                                
+                                # Transition back to AWAITING_ACTIVATION only when BOTH hands reach required bursts
+                                if deact_count_left >= DEACTIVATION_BURSTS_REQUIRED and deact_count_right >= DEACTIVATION_BURSTS_REQUIRED:
+                                    state = AppState.AWAITING_ACTIVATION
+                                    is_output_enabled = False
+                                    burst_count_left = 0
+                                    burst_count_right = 0
+                                    last_burst_open_left = False
+                                    last_burst_open_right = False
+                                    last_burst_time_left = 0.0
+                                    last_burst_time_right = 0.0
+                                    activation_start_time = now
+                                    logging.info("Deactivated (BOTH hands) — controller output disabled")
 
                             # =================================================================
                             # GESTURE MAPPING (data-driven via gesture_map.json)

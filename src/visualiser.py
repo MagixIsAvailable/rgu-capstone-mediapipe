@@ -242,17 +242,22 @@ def draw_overlay(frame, landmarks_list, calculated_values):
         cv2.putText(overlay, "CALIBRATED", (w//2 - 40, h - 20),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, GREEN, 2)
 
-    # Activation indicator (if main loop provided activation metadata)
-    act_count = calculated_values.get('activation_burst_count')
+    # Activation indicator (if main loop provided activation metadata) — show both hands
+    act_count_left = calculated_values.get('activation_burst_count_left')
+    act_count_right = calculated_values.get('activation_burst_count_right')
     act_req = calculated_values.get('activation_required')
     app_state = calculated_values.get('app_state')
-    if act_count is not None and act_req is not None and app_state == 'AWAITING_ACTIVATION':
-        draw_activation_indicator(overlay, act_count, act_req, pos=(60, 60))
-    # Deactivation indicator when ACTIVE
-    deact_count = calculated_values.get('deactivation_burst_count')
+    if act_count_left is not None and act_count_right is not None and act_req is not None and app_state == 'AWAITING_ACTIVATION':
+        draw_activation_indicator(overlay, act_count_left, act_req, pos=(60, 60), label="Activate LEFT")
+        draw_activation_indicator(overlay, act_count_right, act_req, pos=(300, 60), label="Activate RIGHT")
+    
+    # Deactivation indicator when ACTIVE — show both hands
+    deact_count_left = calculated_values.get('deactivation_burst_count_left')
+    deact_count_right = calculated_values.get('deactivation_burst_count_right')
     deact_req = calculated_values.get('deactivation_required')
-    if deact_count is not None and deact_req is not None and app_state == 'ACTIVE':
-        draw_activation_indicator(overlay, deact_count, deact_req, pos=(60, 100), label="Deactivate")
+    if deact_count_left is not None and deact_count_right is not None and deact_req is not None and app_state == 'ACTIVE':
+        draw_activation_indicator(overlay, deact_count_left, deact_req, pos=(60, 100), label="Deactivate LEFT")
+        draw_activation_indicator(overlay, deact_count_right, deact_req, pos=(300, 100), label="Deactivate RIGHT")
 
     # Early exit if no hands detected
     if not landmarks_list:
