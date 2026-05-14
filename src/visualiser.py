@@ -134,12 +134,12 @@ def to_pixel(landmark, shape):
     return int(landmark.x * shape[1]), int(landmark.y * shape[0])
 
 
-def draw_activation_indicator(frame, burst_count, bursts_required=3, pos=(40, 60)):
-    """Draw simple activation burst indicator (filled circles + text)."""
+def draw_activation_indicator(frame, burst_count, bursts_required=3, pos=(40, 60), label="Activation"):
+    """Draw simple activation/deactivation burst indicator (filled circles + text)."""
     h, w = frame.shape[0], frame.shape[1]
     x0, y0 = pos
     # Draw label
-    cv2.putText(frame, f"Activation: {burst_count}/{bursts_required}", (x0 - 20, y0 - 20),
+    cv2.putText(frame, f"{label}: {burst_count}/{bursts_required}", (x0 - 20, y0 - 20),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, WHITE, 1)
     # Draw circles for each required burst
     spacing = 24
@@ -248,6 +248,11 @@ def draw_overlay(frame, landmarks_list, calculated_values):
     app_state = calculated_values.get('app_state')
     if act_count is not None and act_req is not None and app_state == 'AWAITING_ACTIVATION':
         draw_activation_indicator(overlay, act_count, act_req, pos=(60, 60))
+    # Deactivation indicator when ACTIVE
+    deact_count = calculated_values.get('deactivation_burst_count')
+    deact_req = calculated_values.get('deactivation_required')
+    if deact_count is not None and deact_req is not None and app_state == 'ACTIVE':
+        draw_activation_indicator(overlay, deact_count, deact_req, pos=(60, 100), label="Deactivate")
 
     # Early exit if no hands detected
     if not landmarks_list:

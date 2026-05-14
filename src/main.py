@@ -102,6 +102,7 @@ from config import (
     ANGLE_NORMALIZATION,
     ACTIVATION_BURSTS_REQUIRED,
     ACTIVATION_MIN_GAP_S,
+    DEACTIVATION_BURSTS_REQUIRED,
     WINDOW_ALWAYS_ON_TOP,
     ACTIVATION_RESET_S,
 )
@@ -688,12 +689,17 @@ async def main(
         read_failed_count = 0
         frame_time_window = deque()
 
-        # Activation state machine variables
+        # Activation / Deactivation state machine variables
         state = AppState.WARMUP
         warmup_start = calibration_start
+        # Activation (open-palm bursts)
         burst_count = 0
         last_burst_open = False
         last_burst_time = 0.0
+        # Deactivation (closed-fist bursts)
+        deact_count = 0
+        last_deact_fist = False
+        last_deact_time = 0.0
         is_output_enabled = False
 
         # EMA state keyed by hand index — fixes cross-hand bleed
@@ -876,6 +882,8 @@ async def main(
                         'pinch_dists': [], 'pinch_speeds': [], 'wrist_coords': [],
                         'activation_burst_count': burst_count,
                         'activation_required': ACTIVATION_BURSTS_REQUIRED,
+                        'deactivation_burst_count': deact_count,
+                        'deactivation_required': DEACTIVATION_BURSTS_REQUIRED,
                         'app_state': state.name,
                     }
 
@@ -919,7 +927,7 @@ async def main(
                             # =================================================================
                             if state == AppState.AWAITING_ACTIVATION:
                                 is_open = (gesture_list == ["OPEN_PALM"]) or ("OPEN_PALM" in gesture_list)
-                                # Rising edge detection + debounce
+                                # Rising edge detection + debounce for activation
                                 if is_open and not last_burst_open and (now - last_burst_time) > ACTIVATION_MIN_GAP_S:
                                     burst_count += 1
                                     last_burst_time = now
@@ -928,9 +936,34 @@ async def main(
                                     if burst_count >= ACTIVATION_BURSTS_REQUIRED:
                                         state = AppState.ACTIVE
                                         is_output_enabled = True
+                                        deact_count = 0
+                                        last_deact_fist = False
+                                        last_deact_time = 0.0
                                         logging.info("Activation complete — controller output enabled")
                                 elif not is_open:
                                     last_burst_open = False
+
+                            # While ACTIVE: watch for closed-fist bursts to deactivate
+                            if state == AppState.ACTIVE:
+                                # Define fist detection: all fingers bent (index, middle, ring, pinky)
+                                fist_needed = {"index_bent", "middle_bent", "ring_bent", "pinky_bent"}
+                                # For left-hand labels, they may be prefixed 'left_'
+                                fist_needed_left = {"left_index_bent", "left_middle_bent", "left_ring_bent", "left_pinky_bent"}
+                                is_fist = fist_needed.issubset(set(gesture_list)) or fist_needed_left.issubset(set(gesture_list))
+                                if is_fist and not last_deact_fist and (now - last_deact_time) > ACTIVATION_MIN_GAP_S:
+                                    deact_count += 1
+                                    last_deact_time = now
+                                    last_deact_fist = True
+                                    logging.info(f"Deactivation burst {deact_count}/{DEACTIVATION_BURSTS_REQUIRED}")
+                                    if deact_count >= DEACTIVATION_BURSTS_REQUIRED:
+                                        state = AppState.AWAITING_ACTIVATION
+                                        is_output_enabled = False
+                                        burst_count = 0
+                                        last_burst_open = False
+                                        last_burst_time = 0.0
+                                        logging.info("Deactivated — controller output disabled")
+                                elif not is_fist:
+                                    last_deact_fist = False
 
                             # =================================================================
                             # GESTURE MAPPING (data-driven via gesture_map.json)

@@ -51,6 +51,7 @@ CALIBRATION_DURATION = 0.5  # seconds (short warmup before gesture detection)
 # Activation (burst) settings
 ACTIVATION_BURSTS_REQUIRED = 3
 ACTIVATION_MIN_GAP_S = 0.3  # minimum gap between bursts to debounce
+DEACTIVATION_BURSTS_REQUIRED = 3
 
 # Logging
 # If True, latency logging starts without requiring --log-latency.
