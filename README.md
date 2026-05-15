@@ -38,6 +38,40 @@ For this repository, Python 3.11 remains the validated baseline used for develop
 
 ---
 
+## Notebook Results (Figures + Key Metrics)
+
+The project notebooks in `tools/latency_analysis.ipynb` and `tools/VisionInput_user_study_data.ipynb` export the following result figures.
+
+### Latency Analysis (`tools/latency_analysis.ipynb`)
+
+![Figure 4.1 - Latency Distribution](tools/fig_4_1_latency_distribution.png)
+![Figure 4.2 - Latency by Camera Source](tools/fig_4_2_latency_by_camera.png)
+![Figure 4.3 - Camo vs Native](tools/fig_4_3_camo_vs_native.png)
+![Figure 4.4 - Pipeline Stage Breakdown](tools/fig_4_4_pipeline_stages.png)
+![Figure 4.5 - Latency CDF](tools/fig_4_5_latency_cdf.png)
+
+Key values highlighted in the notebook outputs:
+- Median latency (P50): **29.58 ms**
+- P90 latency: **37.99 ms**
+- P95 latency: **44.90 ms**
+- P99 latency: **51.77 ms**
+- NFR target line used in plots: **33.33 ms**
+
+### User Study Analysis (`tools/VisionInput_user_study_data.ipynb`)
+
+![Figure 6.1 - Supplementary Item Means](tools/outputs/fig_6_1_supplementary_means.png)
+![Figure 6.2 - SUS Scores by Participant](tools/outputs/fig_6_2_sus_scores.png)
+![Table 6.1 - SUS Scores](tools/outputs/table_6_1_sus_scores.png)
+![Table 6.2 - Supplementary Means](tools/outputs/table_6_2_supplementary_means.png)
+
+Key values highlighted in the notebook outputs:
+- SUS participant scores: **P1 55.0**, **P2 85.0**, **P3 77.5**, **P4 72.5**, **P5 72.5**, **P6 62.5**
+- Mean SUS score: **70.8** (above the **68** acceptability threshold)
+- Highest supplementary item mean: **Would use again = 4.83/5**
+- Lowest supplementary item mean: **Tasks more quickly than physical controller = 3.00/5**
+
+---
+
 ## Branches
 
 - **main**: Dissertation submission — stable, graded version. Do not modify this branch.
