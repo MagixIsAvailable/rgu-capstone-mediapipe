@@ -125,7 +125,7 @@ Key values highlighted in the notebook outputs:
 ### Developed & Tested On
 - **CPU**: AMD Ryzen 9 5950X
 - **GPU**: NVIDIA RTX 3090
-- **RAM**: 64GB DDR4  3200Mhz
+ - **RAM**: 64GB DDR4 3200 MHz
 - **Camera**: Insta360 GO 3S (webcam mode) and Creative VF0700 webcam
 - **Controller Reference**: Mappings verified against Razer Wolverine V2 using `joy.cpl`
 ![Controller front view](https://github.com/user-attachments/assets/22451a90-adbd-4916-82e3-522a5f43dbbc)
@@ -227,6 +227,30 @@ VisionInput is designed to run on standard hardware.
 VisionInput uses a split-hand control scheme. Both hands must be visible for full control.
 
 *![Photo: both hands in gesture position in front of camera](imgs/overlay_Mediapipe.png)*
+
+```mermaid
+graph TB
+      subgraph LEFT_HAND
+         L1[Wrist tilt -> Left joystick]
+         L2[Index bend -> D-Pad Up]
+         L3[Middle bend -> D-Pad Down]
+         L4[Ring bend -> D-Pad Left]
+         L5[Pinky bend -> D-Pad Right]
+      end
+      subgraph RIGHT_HAND
+         R1[Index pinch -> LB]
+         R2[Middle pinch -> RB]
+         R3[Ring pinch -> LT]
+         R4[Pinky pinch -> RT]
+         R5[Index bend -> A]
+         R6[Middle bend -> B]
+         R7[Ring bend -> X]
+         R8[Pinky bend -> Y]
+      end
+      LEFT_HAND -->|Combined| CONT[Controller]
+      RIGHT_HAND -->|Combined| CONT
+      CONT --> VG[ViGEm Bus]
+```
 
 
 ### Left Hand — Navigation & D-Pad
@@ -339,6 +363,21 @@ Edit `src/config.py` to adjust behaviour:
    - `read_failed_count`
 - Completion message prints the full absolute path of the saved file.
 
+      ```mermaid
+      flowchart TD
+         Logs[Camera Frames]
+         Lat[Latency Logger (logs/latency/)]
+         Bench[Benchmark Logger (logs/benchmark/)]
+         Unify[tools/unify_logs.py]
+         Excel[VisionInput_User_Study_Questionnaire_Responses.xlsx / merged_logs.xlsx]
+
+         Logs --> Lat
+         Logs --> Bench
+         Lat --> Unify
+         Bench --> Unify
+         Unify --> Excel
+      ```
+
 ### Benchmark Logging
 
 - Enable benchmark mode with `--benchmark-seconds N`.
@@ -386,6 +425,23 @@ rgu-capstone-mediapipe/
 ├── archive/             # Development history and prototypes
 ├── README.md
 └── requirements.txt
+```
+
+```mermaid
+flowchart LR
+   Capture[Camera Capture]
+   Preprocess[Preprocess]
+   MP[MediaPipe Hand Tracking]
+   Resolve[Gesture Resolution]
+   Map[Gesture Mapping]
+   Output[ViGEm Output (vgamepad)]
+   WS[WebSocket Broadcast (optional)]
+   Log[Latency / Benchmark Logging]
+
+   Capture --> Preprocess --> MP --> Resolve --> Map --> Output
+   Resolve --> Log
+   Map --> WS
+   Output --> Log
 ```
 
 ---

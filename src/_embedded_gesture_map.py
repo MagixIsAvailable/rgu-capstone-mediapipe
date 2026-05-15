@@ -1,0 +1,38 @@
+"""
+Auto-generated embedded gesture map fallback.
+This file is created at build-time so frozen executables always have a
+gesture mapping available even when external files fail to extract.
+"""
+_EMBEDDED_GESTURE_MAP = {
+    "right_hand": {
+        "gestures": {
+            "index_bent": "BUTTON_A",
+            "middle_bent": "BUTTON_B",
+            "ring_bent": "BUTTON_X",
+            "pinky_bent": "BUTTON_Y",
+            "index_pinch": "SHOULDER_LEFT",
+            "middle_pinch": "SHOULDER_RIGHT",
+            "ring_pinch": "TRIGGER_LT",
+            "pinky_pinch": "TRIGGER_RT",
+            "OPEN_PALM": "NEUTRAL"
+        },
+        "combos": {},
+        "combo_priority": []
+    },
+    "left_hand": {
+        "gestures": {
+            "index_bent": "DPAD_UP",
+            "middle_bent": "DPAD_DOWN",
+            "ring_bent": "DPAD_LEFT",
+            "pinky_bent": "DPAD_RIGHT"
+        },
+        "combos": {
+            "index_bent+middle_bent": "BUTTON_BACK",
+            "ring_bent+pinky_bent": "BUTTON_START"
+        },
+        "combo_priority": [
+            "index_bent+middle_bent",
+            "ring_bent+pinky_bent"
+        ]
+    }
+}

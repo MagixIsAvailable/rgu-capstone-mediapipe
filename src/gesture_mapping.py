@@ -17,6 +17,8 @@ Not run directly.
 """
 
 import json
+import sys
+from importlib import import_module
 from pathlib import Path
 
 # In-memory cache so JSON is read once per process.
@@ -30,11 +32,105 @@ def load_gesture_map(path: str | None = None) -> dict:
     if _GESTURE_MAP is None:
         # Default to repo-level config/gesture_map.json unless an override path is given.
         map_path = Path(path) if path else (Path(__file__).resolve().parent.parent / "config" / "gesture_map.json")
+        # When frozen by PyInstaller, resources are extracted to sys._MEIPASS.
+        # Try fallback locations so bundled apps can find the JSON file.
         if not map_path.exists():
-            raise FileNotFoundError(f"Gesture map not found: {map_path}")
-        # Parse JSON mapping into dictionary.
-        with map_path.open("r", encoding="utf-8") as f:
-            _GESTURE_MAP = json.load(f)
+            # check PyInstaller temp extraction dir
+            _meipass = getattr(sys, '_MEIPASS', None)
+            if _meipass:
+                alt = Path(_meipass) / 'config' / 'gesture_map.json'
+                if alt.exists():
+                    map_path = alt
+
+        if not map_path.exists():
+            # check current working dir config
+            alt2 = Path.cwd() / 'config' / 'gesture_map.json'
+            if alt2.exists():
+                map_path = alt2
+
+        # Also try scanning any _MEI* temp extraction folder locations for config
+        if not map_path.exists():
+            try:
+                import tempfile
+                tmp = Path(tempfile.gettempdir())
+                for p in tmp.iterdir():
+                    if p.name.startswith('_MEI') and p.is_dir():
+                        candidate = p / 'config' / 'gesture_map.json'
+                        if candidate.exists():
+                            map_path = candidate
+                            break
+            except Exception:
+                pass
+
+        # If we located a file, parse it. Otherwise try embedded fallback.
+        if map_path.exists():
+            with map_path.open("r", encoding="utf-8") as f:
+                _GESTURE_MAP = json.load(f)
+        else:
+            # 1) Try importing embedded module as a normal package module.
+            mod = None
+            try:
+                mod = import_module('src._embedded_gesture_map')
+            except Exception:
+                try:
+                    mod = import_module('_embedded_gesture_map')
+                except Exception:
+                    mod = None
+
+            if mod and hasattr(mod, '_EMBEDDED_GESTURE_MAP'):
+                _GESTURE_MAP = mod._EMBEDDED_GESTURE_MAP
+            else:
+                # 2) Try reading the extracted data file from sys._MEIPASS/src/_embedded_gesture_map.py
+                try:
+                    _meipass = getattr(sys, '_MEIPASS', None)
+                    if _meipass:
+                        emb = Path(_meipass) / 'src' / '_embedded_gesture_map.py'
+                        if emb.exists():
+                            scope = {}
+                            code = emb.read_text(encoding='utf-8')
+                            exec(code, scope)
+                            if '_EMBEDDED_GESTURE_MAP' in scope:
+                                _GESTURE_MAP = scope['_EMBEDDED_GESTURE_MAP']
+                except Exception:
+                    _GESTURE_MAP = None
+
+            if _GESTURE_MAP is None:
+                        # Nothing worked — fall back to a built-in default mapping so the
+                        # frozen app continues to run. This mirrors the content added to
+                        # src/_embedded_gesture_map.py at build-time.
+                        _GESTURE_MAP = {
+                            "right_hand": {
+                                "gestures": {
+                                    "index_bent": "BUTTON_A",
+                                    "middle_bent": "BUTTON_B",
+                                    "ring_bent": "BUTTON_X",
+                                    "pinky_bent": "BUTTON_Y",
+                                    "index_pinch": "SHOULDER_LEFT",
+                                    "middle_pinch": "SHOULDER_RIGHT",
+                                    "ring_pinch": "TRIGGER_LT",
+                                    "pinky_pinch": "TRIGGER_RT",
+                                    "OPEN_PALM": "NEUTRAL"
+                                },
+                                "combos": {},
+                                "combo_priority": []
+                            },
+                            "left_hand": {
+                                "gestures": {
+                                    "index_bent": "DPAD_UP",
+                                    "middle_bent": "DPAD_DOWN",
+                                    "ring_bent": "DPAD_LEFT",
+                                    "pinky_bent": "DPAD_RIGHT"
+                                },
+                                "combos": {
+                                    "index_bent+middle_bent": "BUTTON_BACK",
+                                    "ring_bent+pinky_bent": "BUTTON_START"
+                                },
+                                "combo_priority": [
+                                    "index_bent+middle_bent",
+                                    "ring_bent+pinky_bent"
+                                ]
+                            }
+                        }
     return _GESTURE_MAP
 
 

@@ -14,6 +14,10 @@ Usage:
 Imported by main.py — not run directly.
 """
 import logging
+import os
+import sys
+import tempfile
+from pathlib import Path
 from config import DEAD_ZONE
 
 # Global gamepad instance
@@ -21,6 +25,60 @@ gamepad = None
 vg = None  # ViGEm module (vgamepad) — loaded conditionally below
 
 try:
+    # Ensure ViGEmClient.dll is discoverable when running from a PyInstaller
+    # one-file bundle (_MEIPASS) or when DLLs are packaged under vgamepad/win.
+    try:
+        import ctypes
+
+        def _find_vigem_dll():
+            # Check extracted PyInstaller temp dir
+            _meipass = getattr(sys, '_MEIPASS', None)
+            candidates = []
+            if _meipass:
+                base = Path(_meipass) / 'vgamepad' / 'win' / 'vigem' / 'client'
+                if base.exists():
+                    for arch in ('x64', 'x86'):
+                        p = base / arch / 'ViGEmClient.dll'
+                        if p.exists():
+                            candidates.append(p)
+
+            # Check site-packages installation location (development)
+            try:
+                import vgamepad as _vgtest
+                sp = Path(_vgtest.__file__).parent / 'win' / 'vigem' / 'client'
+                for arch in ('x64', 'x86'):
+                    p = sp / arch / 'ViGEmClient.dll'
+                    if p.exists():
+                        candidates.append(p)
+            except Exception:
+                pass
+
+            # Scan temp for _MEI* extraction dirs as last resort
+            try:
+                td = Path(tempfile.gettempdir())
+                for d in td.iterdir():
+                    if d.name.startswith('_MEI') and d.is_dir():
+                        p = d / 'vgamepad' / 'win' / 'vigem' / 'client' / 'x64' / 'ViGEmClient.dll'
+                        if p.exists():
+                            candidates.append(p)
+            except Exception:
+                pass
+
+            return candidates[0] if candidates else None
+
+        _vigem_path = _find_vigem_dll()
+        if _vigem_path:
+            # Add directory to DLL search path and try to load dynamically
+            try:
+                os.add_dll_directory(str(_vigem_path.parent))
+            except Exception:
+                pass
+            try:
+                ctypes.CDLL(str(_vigem_path))
+            except Exception:
+                pass
+    except Exception:
+        pass
     import vgamepad as vg  # Virtual Xbox 360 gamepad driver
 except ImportError:
     logging.error("[ViGEm] Error: 'vgamepad' module not found. Please run 'pip install vgamepad'.")
