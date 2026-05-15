@@ -1,12 +1,15 @@
 # VisionInput — Gesture Controller for Immersive Projection Environments
 
+![Python 3.11](https://img.shields.io/badge/python-3.11-blue?logo=python&logoColor=white)
+![License: MIT](https://img.shields.io/badge/license-MIT-green)
+
 **VisionInput** is a plug-and-play gesture controller built for the James Hutton Institute's 360° immersive projection room in Aberdeen. It uses Google MediaPipe hand tracking to emulate an Xbox 360 controller, replacing physical input devices with natural hand gestures for navigating immersive content and applications.
 
 Developed as an RGU Honours capstone project (CM4134), supervised by Dr John N.A. Brown.
 
 ---
 
-## Table of contents
+## Table of Contents
 
 - [System Requirements](#system-requirements)
 - [Current Stage (April 2026)](#current-stage-april-2026)
