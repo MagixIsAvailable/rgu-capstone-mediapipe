@@ -6,6 +6,25 @@ Developed as an RGU Honours capstone project (CM4134), supervised by Dr John N.A
 
 ---
 
+## Table of contents
+
+- [System Requirements](#system-requirements)
+- [Current Stage (April 2026)](#current-stage-april-2026)
+- [Notebook Results (Figures + Key Metrics)](#notebook-results-figures--key-metrics)
+- [Branches](#branches)
+- [Hardware](#hardware)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Controls & Gestures](#controls--gestures)
+- [Tuning & Customisation](#tuning--customisation)
+- [Features](#features)
+- [Latency Logging](#latency-logging)
+- [Benchmark Logging](#benchmark-logging)
+- [Web Interface (Experimental)](#web-interface-experimental)
+- [Project Structure](#project-structure)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
+
 ## System Requirements
 
 - **OS**: Windows 10 or Windows 11 (required for ViGEmBus)
@@ -44,11 +63,20 @@ The project notebooks in `tools/latency_analysis.ipynb` and `tools/VisionInput_u
 
 ### Latency Analysis (`tools/latency_analysis.ipynb`)
 
-![Figure 4.1 - Latency Distribution](tools/fig_4_1_latency_distribution.png)
-![Figure 4.2 - Latency by Camera Source](tools/fig_4_2_latency_by_camera.png)
-![Figure 4.3 - Camo vs Native](tools/fig_4_3_camo_vs_native.png)
-![Figure 4.4 - Pipeline Stage Breakdown](tools/fig_4_4_pipeline_stages.png)
-![Figure 4.5 - Latency CDF](tools/fig_4_5_latency_cdf.png)
+**Figure 4.1. Latency distribution.**
+![Figure 4.1. Latency distribution.](tools/fig_4_1_latency_distribution.png)
+
+**Figure 4.2. Latency by camera source.**
+![Figure 4.2. Latency by camera source.](tools/fig_4_2_latency_by_camera.png)
+
+**Figure 4.3. Camo Studio vs native webcam latency.**
+![Figure 4.3. Camo Studio vs native webcam latency.](tools/fig_4_3_camo_vs_native.png)
+
+**Figure 4.4. Pipeline stage timing breakdown.**
+![Figure 4.4. Pipeline stage timing breakdown.](tools/fig_4_4_pipeline_stages.png)
+
+**Figure 4.5. Latency cumulative distribution function (CDF).**
+![Figure 4.5. Latency cumulative distribution function (CDF).](tools/fig_4_5_latency_cdf.png)
 
 Key values highlighted in the notebook outputs:
 - Median latency (P50): **29.58 ms**
@@ -59,10 +87,17 @@ Key values highlighted in the notebook outputs:
 
 ### User Study Analysis (`tools/VisionInput_user_study_data.ipynb`)
 
-![Figure 6.1 - Supplementary Item Means](tools/outputs/fig_6_1_supplementary_means.png)
-![Figure 6.2 - SUS Scores by Participant](tools/outputs/fig_6_2_sus_scores.png)
-![Table 6.1 - SUS Scores](tools/outputs/table_6_1_sus_scores.png)
-![Table 6.2 - Supplementary Means](tools/outputs/table_6_2_supplementary_means.png)
+**Figure 6.1. Supplementary questionnaire item means.**
+![Figure 6.1. Supplementary questionnaire item means.](tools/outputs/fig_6_1_supplementary_means.png)
+
+**Figure 6.2. System Usability Scale (SUS) scores by participant.**
+![Figure 6.2. System Usability Scale (SUS) scores by participant.](tools/outputs/fig_6_2_sus_scores.png)
+
+**Table 6.1. System Usability Scale (SUS) scores.**
+![Table 6.1. System Usability Scale (SUS) scores.](tools/outputs/table_6_1_sus_scores.png)
+
+**Table 6.2. Supplementary questionnaire means.**
+![Table 6.2. Supplementary questionnaire means.](tools/outputs/table_6_2_supplementary_means.png)
 
 Key values highlighted in the notebook outputs:
 - SUS participant scores: **P1 55.0**, **P2 85.0**, **P3 77.5**, **P4 72.5**, **P5 72.5**, **P6 62.5**
@@ -90,10 +125,10 @@ Key values highlighted in the notebook outputs:
 - **RAM**: 64GB DDR4  3200Mhz
 - **Camera**: Insta360 GO 3S (webcam mode) and Creative VF0700 webcam
 - **Controller Reference**: Mappings verified against Razer Wolverine V2 using `joy.cpl`
-<img width="372" height="317" alt="Image" src="https://github.com/user-attachments/assets/22451a90-adbd-4916-82e3-522a5f43dbbc"/>
-<img width="372" height="317" alt="Image" src="https://github.com/user-attachments/assets/d4ee0a16-8992-43c3-b43b-203700470c98"/>
+![Controller front view](https://github.com/user-attachments/assets/22451a90-adbd-4916-82e3-522a5f43dbbc)
+![Controller back view](https://github.com/user-attachments/assets/d4ee0a16-8992-43c3-b43b-203700470c98)
 
-<img width="720" height="640" alt="Image" src="https://github.com/user-attachments/assets/aa6aa020-ef55-4f43-b17a-6ba1b9567a2b"/>
+![Photo: camera mounted on tripod, hands in frame](https://github.com/user-attachments/assets/aa6aa020-ef55-4f43-b17a-6ba1b9567a2b)
 *Photo: camera mounted on tripod, hands in frame*
 
 ### Minimum Recommendations
@@ -116,7 +151,7 @@ VisionInput is designed to run on standard hardware.
 1. **Install ViGEmBus Driver**
    Download and run the latest installer from the link above. You should hear the Windows USB connection sound when the script starts successfully.
 
-<img width="495" height="392" alt="Image" src="https://github.com/user-attachments/assets/1047fe38-f219-4ff7-99d5-c2b6ccdda9b5" />
+![ViGEmBus installer screenshot](https://github.com/user-attachments/assets/1047fe38-f219-4ff7-99d5-c2b6ccdda9b5)
 
 2. **Clone the Repository**
 ```powershell
@@ -217,9 +252,9 @@ Controls the **Left Analog Stick** and **D-Pad** simultaneously.
 
 Two-layer gesture system. **Pinches take priority over bends.**
 
-<img width="394" height="452" alt="Image" src="https://github.com/user-attachments/assets/4caaccb8-152e-4adc-bb0d-553c97c6f576" />
+![Right-hand gesture example 1](https://github.com/user-attachments/assets/4caaccb8-152e-4adc-bb0d-553c97c6f576)
 
-<img width="394" height="452" alt="Image" src="https://github.com/user-attachments/assets/02224c1a-e410-474f-976d-c0c3f2190f12" />
+![Right-hand gesture example 2](https://github.com/user-attachments/assets/02224c1a-e410-474f-976d-c0c3f2190f12)
 
 
 *[Photo: Windows Game Controllers test panel showing buttons lit]*
