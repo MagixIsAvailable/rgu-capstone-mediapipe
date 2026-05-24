@@ -15,6 +15,7 @@ Developed as an RGU Honours capstone project (CM4134), supervised by Dr John N.A
 - [Current Stage (April 2026)](#current-stage-april-2026)
 - [Notebook Results (Figures + Key Metrics)](#notebook-results-figures--key-metrics)
 - [Branches](#branches)
+- [Future Work](#future-work)
 - [Hardware](#hardware)
 - [Installation](#installation)
 - [Configuration](#configuration)
@@ -118,6 +119,47 @@ Key values highlighted in the notebook outputs:
    - Resizable Window: use OpenCV `WINDOW_NORMAL` to allow window resizing.
    - Always-On-Top: optional topmost window flag for Windows to keep the visualiser visible.
    - Changes are committed to `feature/future-work` to preserve `main` for grading.
+
+
+## Future Work
+
+The following items are planned future enhancements for VisionInput. The estimates assume focused solo development in 6 to 8 hour work sessions.
+
+| Future feature | Why it matters | Implementation time | Testing time | Total |
+|---|---|---:|---:|---:|
+| Graphical configuration interface | Makes tuning easier without editing files | 1.5 to 3 days | 0.5 to 1 day | 2 to 4 days |
+| On-the-fly profile switching | Lets users switch modes during runtime | 1 to 2 days | 0.5 to 1 day | 1.5 to 3 days |
+| Dynamic hand size auto-calibration | Improves consistency across users | 1 to 2 days | 0.5 to 1 day | 1.5 to 3 days |
+| Replace EMA with a 1€ filter | Better balance of smoothness and responsiveness | 1 to 2 days | 0.5 to 1 day | 1.5 to 3 days |
+| Right analog stick mapping via hand rotation | Addresses the unmapped right-stick limitation | 2 to 4 days | 1 to 2 days | 3 to 6 days |
+| Multithreaded pipeline processing | Improves FPS and reduces frame drops | 2 to 5 days | 1 to 2 days | 3 to 7 days |
+| 3D vector-based bend detection | More robust gesture detection under hand rotation | 2 to 4 days | 1 to 2 days | 3 to 6 days |
+| Application context auto-detection | Loads the best profile automatically per app | 2 to 4 days | 1 to 2 days | 3 to 6 days |
+| Upgrade to the MediaPipe Tasks API | Modernises the vision backend and improves long-term maintainability | 4 to 8 days | 2 to 3 days | 6 to 11 days |
+| Lightweight machine learning classifier | Enables richer gesture vocabulary | 5 to 10 days | 3 to 5 days | 8 to 15 days |
+
+### Recommended Order
+
+1. Graphical configuration interface
+2. On-the-fly profile switching
+3. Dynamic hand size auto-calibration
+4. Replace EMA with a 1€ filter
+5. Right analog stick mapping via hand rotation
+6. Multithreaded pipeline processing
+7. 3D vector-based bend detection
+8. Application context auto-detection
+9. Upgrade to the MediaPipe Tasks API
+10. Lightweight machine learning classifier
+
+### Testing Approach
+
+Each feature should be validated with the following checks:
+
+1. Unit tests for mapping, filtering, and state logic where applicable.
+2. Manual smoke tests using `--visualise`.
+3. Performance checks for latency-sensitive changes.
+4. Real-world camera testing under normal lighting.
+5. Regression checks to confirm existing gestures and controller outputs still behave correctly.
 
 
 ## Hardware
