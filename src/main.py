@@ -974,6 +974,8 @@ async def main(
                         'deactivation_burst_count_right': deact_count_right,
                         'deactivation_required': DEACTIVATION_BURSTS_REQUIRED,
                         'app_state': state.name,
+                        # Expose live-configurable bend threshold for visualiser/UI
+                        'bend_threshold': config_mod.FINGER_BEND_ANGLE_DEG,
                     }
 
                     output_t0 = time.perf_counter()
