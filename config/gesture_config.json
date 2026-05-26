@@ -1,0 +1,15 @@
+{
+  "finger_bend_angle_deg": 30.0,
+  "pinch_thresholds": {
+    "index": 0.05,
+    "middle": 0.06,
+    "ring": 0.07,
+    "pinky": 0.08
+  },
+  "smoothing_alpha": 0.3,
+  "dead_zone": 0.15,
+  "activation_bursts_required": 3,
+  "deactivation_bursts_required": 3,
+  "calibration_duration": 0.5,
+  "gesture_map_file": "config/gesture_map.json"
+}

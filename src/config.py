@@ -93,3 +93,112 @@ WINDOW_ALWAYS_ON_TOP = True
 
 # Activation reset: if bursts are not completed within this window, reset count
 ACTIVATION_RESET_S = 5.0
+
+# -------------------------
+# Runtime-loadable JSON config
+# -------------------------
+import json
+import os
+
+# Path to editable JSON config (project-root relative)
+_THIS_DIR = os.path.dirname(__file__)
+_PROJECT_ROOT = os.path.abspath(os.path.join(_THIS_DIR, os.pardir))
+GESTURE_CONFIG_PATH = os.path.join(_PROJECT_ROOT, 'config', 'gesture_config.json')
+
+
+def _apply_json_overrides(cfg: dict):
+	"""Apply values from loaded JSON onto module-level globals where applicable."""
+	global FINGER_BEND_ANGLE_DEG, PINCH_INDEX, PINCH_MIDDLE, PINCH_RING, PINCH_PINKY
+	global EMA_ALPHA, DEAD_ZONE, ACTIVATION_BURSTS_REQUIRED, DEACTIVATION_BURSTS_REQUIRED
+	global CALIBRATION_DURATION
+
+	if not isinstance(cfg, dict):
+		return
+
+	if 'finger_bend_angle_deg' in cfg:
+		try:
+			FINGER_BEND_ANGLE_DEG = float(cfg['finger_bend_angle_deg'])
+		except Exception:
+			pass
+
+	pt = cfg.get('pinch_thresholds') or {}
+	try:
+		PINCH_INDEX = float(pt.get('index', PINCH_INDEX))
+		PINCH_MIDDLE = float(pt.get('middle', PINCH_MIDDLE))
+		PINCH_RING = float(pt.get('ring', PINCH_RING))
+		PINCH_PINKY = float(pt.get('pinky', PINCH_PINKY))
+	except Exception:
+		pass
+
+	if 'smoothing_alpha' in cfg:
+		try:
+			EMA_ALPHA = float(cfg['smoothing_alpha'])
+		except Exception:
+			pass
+
+	if 'dead_zone' in cfg:
+		try:
+			DEAD_ZONE = float(cfg['dead_zone'])
+		except Exception:
+			pass
+
+	if 'activation_bursts_required' in cfg:
+		try:
+			ACTIVATION_BURSTS_REQUIRED = int(cfg['activation_bursts_required'])
+		except Exception:
+			pass
+
+	if 'deactivation_bursts_required' in cfg:
+		try:
+			DEACTIVATION_BURSTS_REQUIRED = int(cfg['deactivation_bursts_required'])
+		except Exception:
+			pass
+
+	if 'calibration_duration' in cfg:
+		try:
+			CALIBRATION_DURATION = float(cfg['calibration_duration'])
+		except Exception:
+			pass
+
+
+def load_gesture_config(path: str = None) -> dict:
+	"""Load gesture configuration from JSON file and apply overrides.
+
+	Returns the parsed config dict (or empty dict on error).
+	"""
+	p = path or GESTURE_CONFIG_PATH
+	try:
+		with open(p, 'r', encoding='utf-8') as f:
+			cfg = json.load(f)
+		_apply_json_overrides(cfg)
+		return cfg
+	except Exception:
+		return {}
+
+
+def save_gesture_config(cfg: dict, path: str = None) -> bool:
+	"""Atomically save gesture config JSON. Returns True on success."""
+	p = path or GESTURE_CONFIG_PATH
+	try:
+		os.makedirs(os.path.dirname(p), exist_ok=True)
+		# backup existing
+		if os.path.exists(p):
+			bak = p + '.bak.' + time.strftime('%Y%m%dT%H%M%S')
+			try:
+				os.replace(p, bak)
+			except Exception:
+				# best-effort backup
+				pass
+		tmp = p + '.tmp'
+		with open(tmp, 'w', encoding='utf-8') as f:
+			json.dump(cfg, f, indent=2)
+		os.replace(tmp, p)
+		# apply after save
+		_apply_json_overrides(cfg)
+		return True
+	except Exception:
+		return False
+
+
+# Attempt to load config at import time (silent failure keeps defaults)
+_ = load_gesture_config()
