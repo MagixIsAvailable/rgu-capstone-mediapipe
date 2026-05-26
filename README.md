@@ -271,27 +271,27 @@ VisionInput uses a split-hand control scheme. Both hands must be visible for ful
 *![Photo: both hands in gesture position in front of camera](imgs/overlay_Mediapipe.png)*
 
 ```mermaid
-graph TB
-      subgraph LEFT_HAND
-         L1[Wrist tilt -> Left joystick]
-         L2[Index bend -> D-Pad Up]
-         L3[Middle bend -> D-Pad Down]
-         L4[Ring bend -> D-Pad Left]
-         L5[Pinky bend -> D-Pad Right]
-      end
-      subgraph RIGHT_HAND
-         R1[Index pinch -> LB]
-         R2[Middle pinch -> RB]
-         R3[Ring pinch -> LT]
-         R4[Pinky pinch -> RT]
-         R5[Index bend -> A]
-         R6[Middle bend -> B]
-         R7[Ring bend -> X]
-         R8[Pinky bend -> Y]
-      end
-      LEFT_HAND -->|Combined| CONT[Controller]
-      RIGHT_HAND -->|Combined| CONT
-      CONT --> VG[ViGEm Bus]
+flowchart TB
+   subgraph LeftHand[LEFT HAND]
+      LH1["Wrist tilt to left joystick"]
+      LH2["Index bend to D-Pad Up"]
+      LH3["Middle bend to D-Pad Down"]
+      LH4["Ring bend to D-Pad Left"]
+      LH5["Pinky bend to D-Pad Right"]
+   end
+   subgraph RightHand[RIGHT HAND]
+      RH1["Index pinch to LB"]
+      RH2["Middle pinch to RB"]
+      RH3["Ring pinch to LT"]
+      RH4["Pinky pinch to RT"]
+      RH5["Index bend to A"]
+      RH6["Middle bend to B"]
+      RH7["Ring bend to X"]
+      RH8["Pinky bend to Y"]
+   end
+   LeftHand -->|Combined| CTRL["Controller"]
+   RightHand -->|Combined| CTRL
+   CTRL --> VIG["ViGEm Bus"]
 ```
 
 
@@ -405,20 +405,20 @@ Edit `src/config.py` to adjust behaviour:
    - `read_failed_count`
 - Completion message prints the full absolute path of the saved file.
 
-      ```mermaid
-      flowchart TD
-         Logs[Camera Frames]
-         Lat[Latency Logger (logs/latency/)]
-         Bench[Benchmark Logger (logs/benchmark/)]
-         Unify[tools/unify_logs.py]
-         Excel[VisionInput_User_Study_Questionnaire_Responses.xlsx / merged_logs.xlsx]
+```mermaid
+flowchart TD
+   Logs["Camera Frames"]
+   Lat["Latency Logger logs/latency"]
+   Bench["Benchmark Logger logs/benchmark"]
+   Unify["tools/unify_logs.py"]
+   Excel["merged_logs.xlsx"]
 
-         Logs --> Lat
-         Logs --> Bench
-         Lat --> Unify
-         Bench --> Unify
-         Unify --> Excel
-      ```
+   Logs --> Lat
+   Logs --> Bench
+   Lat --> Unify
+   Bench --> Unify
+   Unify --> Excel
+```
 
 ### Benchmark Logging
 
@@ -471,19 +471,19 @@ rgu-capstone-mediapipe/
 
 ```mermaid
 flowchart LR
-   Capture[Camera Capture]
-   Preprocess[Preprocess]
-   MP[MediaPipe Hand Tracking]
-   Resolve[Gesture Resolution]
-   Map[Gesture Mapping]
-   Output[ViGEm Output (vgamepad)]
-   WS[WebSocket Broadcast (optional)]
-   Log[Latency / Benchmark Logging]
+   Capture["Camera Capture"]
+   Preprocess["Preprocess"]
+   MP["MediaPipe Hand Tracking"]
+   Resolve["Gesture Resolution"]
+   Map["Gesture Mapping"]
+   Out["ViGEm Output - vgamepad"]
+   WS["WebSocket Broadcast optional"]
+   Log["Latency and Benchmark Logging"]
 
-   Capture --> Preprocess --> MP --> Resolve --> Map --> Output
+   Capture --> Preprocess --> MP --> Resolve --> Map --> Out
    Resolve --> Log
    Map --> WS
-   Output --> Log
+   Out --> Log
 ```
 
 ---
