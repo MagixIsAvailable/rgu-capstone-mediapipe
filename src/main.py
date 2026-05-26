@@ -100,6 +100,7 @@ from config import (
     CAMERA_REQUEST_HEIGHT,
     INTER_HAND_NEUTRAL_EPSILON,
     ANGLE_NORMALIZATION,
+    FINGER_BEND_ANGLE_DEG,
     ACTIVATION_BURSTS_REQUIRED,
     ACTIVATION_MIN_GAP_S,
     DEACTIVATION_BURSTS_REQUIRED,
@@ -295,6 +296,9 @@ async def broadcast(message_dict):
 # - Priority order: pinch > combo > individual bend
 # =============================================================================
 
+from finger_bend import is_finger_bent
+
+
 def detect_gesture(landmarks, handedness="Left") -> list[str]:
     """Detect gesture from hand landmarks using heuristic geometric rules.
     
@@ -394,14 +398,25 @@ def detect_gesture(landmarks, handedness="Left") -> list[str]:
         if dist(landmarks[20], thumb) < PINCH_PINKY:  return ["pinky_pinch"]   # 0.08
         
         # ===== PHASE 2: Individual finger bends (combinable, lower priority) =====
-        # Finger bend detection: finger tip below PIP joint → finger is flexed.
-        # Uses Y-axis comparison (Y increases downward in image coords).
-        # Indices: [finger_tip, DIP, PIP, MCP] for each finger
+        # Use 3D PIP joint angle for robust, rotation-invariant bend detection.
+        # Indices (MediaPipe): MCP, PIP, TIP per finger
         bends = []
-        if landmarks[8].y  > landmarks[6].y:  bends.append("index_bent")   # index tip > index PIP
-        if landmarks[12].y > landmarks[10].y: bends.append("middle_bent")  # middle tip > middle PIP
-        if landmarks[16].y > landmarks[14].y: bends.append("ring_bent")    # ring tip > ring PIP
-        if landmarks[20].y > landmarks[18].y: bends.append("pinky_bent")   # pinky tip > pinky PIP
+        # Index finger: MCP=5, PIP=6, TIP=8
+        bent, ang = is_finger_bent(landmarks[5], landmarks[6], landmarks[8], FINGER_BEND_ANGLE_DEG)
+        if bent:
+            bends.append("index_bent")
+        # Middle: MCP=9, PIP=10, TIP=12
+        bent, ang = is_finger_bent(landmarks[9], landmarks[10], landmarks[12], FINGER_BEND_ANGLE_DEG)
+        if bent:
+            bends.append("middle_bent")
+        # Ring: MCP=13, PIP=14, TIP=16
+        bent, ang = is_finger_bent(landmarks[13], landmarks[14], landmarks[16], FINGER_BEND_ANGLE_DEG)
+        if bent:
+            bends.append("ring_bent")
+        # Pinky: MCP=17, PIP=18, TIP=20
+        bent, ang = is_finger_bent(landmarks[17], landmarks[18], landmarks[20], FINGER_BEND_ANGLE_DEG)
+        if bent:
+            bends.append("pinky_bent")
         
         # ===== PHASE 3: Default to OPEN_PALM if no bends detected =====
         return bends if bends else ["OPEN_PALM"]
@@ -411,10 +426,19 @@ def detect_gesture(landmarks, handedness="Left") -> list[str]:
     # (bimanual asymmetry per Guiard, 1987).
     
     bends = []
-    if landmarks[8].y  > landmarks[6].y:  bends.append("left_index_bent")   # Add 'left_' prefix
-    if landmarks[12].y > landmarks[10].y: bends.append("left_middle_bent")  # for gesture_map.json lookup
-    if landmarks[16].y > landmarks[14].y: bends.append("left_ring_bent")
-    if landmarks[20].y > landmarks[18].y: bends.append("left_pinky_bent")
+    # LEFT hand: use same 3D angle checks but prefix labels with 'left_'
+    bent, ang = is_finger_bent(landmarks[5], landmarks[6], landmarks[8], FINGER_BEND_ANGLE_DEG)
+    if bent:
+        bends.append("left_index_bent")
+    bent, ang = is_finger_bent(landmarks[9], landmarks[10], landmarks[12], FINGER_BEND_ANGLE_DEG)
+    if bent:
+        bends.append("left_middle_bent")
+    bent, ang = is_finger_bent(landmarks[13], landmarks[14], landmarks[16], FINGER_BEND_ANGLE_DEG)
+    if bent:
+        bends.append("left_ring_bent")
+    bent, ang = is_finger_bent(landmarks[17], landmarks[18], landmarks[20], FINGER_BEND_ANGLE_DEG)
+    if bent:
+        bends.append("left_pinky_bent")
     
     return bends if bends else ["OPEN_PALM"]
 

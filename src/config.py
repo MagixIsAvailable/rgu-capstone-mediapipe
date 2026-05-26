@@ -84,6 +84,10 @@ INTER_HAND_NEUTRAL_EPSILON = 0.05
 # Scales inter-hand angle to joystick Y response.
 ANGLE_NORMALIZATION = 0.628  # approximately pi/5
 
+# Finger bend detection
+# Threshold angle (degrees) at PIP joint above which finger is considered 'bent'
+FINGER_BEND_ANGLE_DEG = 30.0
+
 # Window behaviour (OpenCV window flags)
 WINDOW_ALWAYS_ON_TOP = True
 
