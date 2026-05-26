@@ -372,6 +372,24 @@ def draw_overlay(frame, landmarks_list, calculated_values):
                 cv2.putText(overlay, FINGER_TIPS[idx], (px - 10, py - 10), 
                             cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
 
+                # Per-finger angle overlay (if provided by main loop)
+                finger_angles_list = calculated_values.get('finger_angles', [])
+                if i < len(finger_angles_list):
+                    fa = finger_angles_list[i]
+                    # Map tip index to finger key
+                    tip_to_name = {4: 'thumb', 8: 'index', 12: 'middle', 16: 'ring', 20: 'pinky'}
+                    fname = tip_to_name.get(idx)
+                    if fname and fname in fa:
+                        ang = fa[fname]
+                        # Choose color: green when angle > threshold (bent), grey otherwise
+                        try:
+                            thr = calculated_values.get('bend_threshold', 30.0)
+                        except Exception:
+                            thr = 30.0
+                        col = GREEN if ang > thr else GREY
+                        txt = f"{int(ang)}°" if ang is not None else "-"
+                        cv2.putText(overlay, txt, (px - 10, py + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.4, col, 1)
+
         # =============================================================================
         # LAYER 3: PINCH DISTANCE LINE (Thumb tip 4 → Index tip 8)
         # =============================================================================

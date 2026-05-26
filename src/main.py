@@ -296,7 +296,7 @@ async def broadcast(message_dict):
 # - Priority order: pinch > combo > individual bend
 # =============================================================================
 
-from finger_bend import is_finger_bent
+from finger_bend import is_finger_bent, pip_joint_angle_degrees
 
 
 def detect_gesture(landmarks, handedness="Left") -> list[str]:
@@ -965,6 +965,38 @@ async def main(
                             # GESTURE DETECTION (heuristic geometric classifier)
                             # =================================================================
                             gesture_list = detect_gesture(lm, handedness)
+
+                            # Compute per-finger PIP joint angles for visualisation/tuning
+                            # Index: MCP=5, PIP=6, TIP=8
+                            # Middle: MCP=9, PIP=10, TIP=12
+                            # Ring: MCP=13, PIP=14, TIP=16
+                            # Pinky: MCP=17, PIP=18, TIP=20
+                            finger_angles = {}
+                            try:
+                                ang = pip_joint_angle_degrees(lm[5], lm[6], lm[8])
+                                finger_angles['index'] = ang if ang is not None else 0.0
+                            except Exception:
+                                finger_angles['index'] = 0.0
+                            try:
+                                ang = pip_joint_angle_degrees(lm[9], lm[10], lm[12])
+                                finger_angles['middle'] = ang if ang is not None else 0.0
+                            except Exception:
+                                finger_angles['middle'] = 0.0
+                            try:
+                                ang = pip_joint_angle_degrees(lm[13], lm[14], lm[16])
+                                finger_angles['ring'] = ang if ang is not None else 0.0
+                            except Exception:
+                                finger_angles['ring'] = 0.0
+                            try:
+                                ang = pip_joint_angle_degrees(lm[17], lm[18], lm[20])
+                                finger_angles['pinky'] = ang if ang is not None else 0.0
+                            except Exception:
+                                finger_angles['pinky'] = 0.0
+
+                            # Attach to calculated_values for the visualiser
+                            if 'finger_angles' not in calculated_values:
+                                calculated_values['finger_angles'] = []
+                            calculated_values['finger_angles'].append(finger_angles)
                             
                             # =================================================================
                             # ACTIVATION: while awaiting activation, watch for OPEN_PALM bursts (BOTH hands required)
