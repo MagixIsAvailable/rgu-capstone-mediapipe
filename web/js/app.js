@@ -128,34 +128,114 @@ document.addEventListener('keydown', (event) => {
 // WebSocket Connection to Python Backend
 // ----------------------------------------------------
 function connectWebSocket() {
-    const ws = new WebSocket('ws://localhost:8765');
+    // Expose ws for other functions
+    window.gestureWS = new WebSocket('ws://localhost:8765');
 
-    ws.onopen = function() {
+    window.gestureWS.onopen = function() {
         console.log('Connected to Python Gesture Server');
         const display = document.getElementById('gesture-display');
         if(display) display.textContent = "Connected to Python Server";
+        // Request current config on connect
+        try { window.gestureWS.send(JSON.stringify({type: 'get_config'})); } catch (e) {}
+        const status = document.getElementById('config-status'); if(status) status.textContent = 'Connected';
     };
 
-    ws.onmessage = function(event) {
+    window.gestureWS.onmessage = function(event) {
         try {
             const data = JSON.parse(event.data);
+            // Gesture telemetry messages (backward compatible)
             if (data.gesture) {
                 window.handleGesture(data.gesture);
+                return;
             }
+
+            // Config messages
+            if (data.type === 'config' && data.data) {
+                const cfg = data.data;
+                // Update bend slider if present
+                if (typeof cfg.finger_bend_angle_deg !== 'undefined') {
+                    const val = Number(cfg.finger_bend_angle_deg);
+                    const slider = document.getElementById('bend-slider');
+                    const disp = document.getElementById('bend-val');
+                    if (slider) slider.value = val;
+                    if (disp) disp.textContent = val + '°';
+                }
+                return;
+            }
+
+            if (data.type === 'update_ack') {
+                const status = document.getElementById('config-status'); if(status) status.textContent = 'Updated';
+                setTimeout(()=>{ if(status) status.textContent = 'Connected'; }, 800);
+                return;
+            }
+
+            if (data.type === 'save_result') {
+                const status = document.getElementById('config-status');
+                if (status) status.textContent = data.ok ? 'Saved' : 'Save failed';
+                setTimeout(()=>{ if(status) status.textContent = 'Connected'; }, 1200);
+                return;
+            }
+
+            if (data.type === 'error') {
+                console.warn('WS error:', data.message);
+                return;
+            }
+
         } catch (e) {
             console.error('Error parsing WebSocket message:', e);
         }
     };
 
-    ws.onclose = function() {
+    window.gestureWS.onclose = function() {
         console.log('Disconnected from Python Server, retrying in 2s...');
+        const status = document.getElementById('config-status'); if(status) status.textContent = 'Disconnected';
         setTimeout(connectWebSocket, 2000); // Auto-reconnect
     };
 
-    ws.onerror = function(error) {
+    window.gestureWS.onerror = function(error) {
         console.error('WebSocket Error:', error);
     };
 }
 
 // Start connection
 connectWebSocket();
+
+// --------------------------
+// Config UI bindings
+// --------------------------
+document.addEventListener('DOMContentLoaded', () => {
+    const slider = document.getElementById('bend-slider');
+    const disp = document.getElementById('bend-val');
+    const saveBtn = document.getElementById('save-config');
+    const reloadBtn = document.getElementById('reload-config');
+
+    let debounceTimer = null;
+
+    if (slider) {
+        slider.addEventListener('input', (e) => {
+            const v = Number(e.target.value);
+            if (disp) disp.textContent = v + '°';
+            // Debounce updates to server
+            if (debounceTimer) clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                try {
+                    if (window.gestureWS && window.gestureWS.readyState === WebSocket.OPEN) {
+                        window.gestureWS.send(JSON.stringify({type: 'update_config', patch: {finger_bend_angle_deg: v}}));
+                    }
+                } catch (e) {}
+            }, 120);
+        });
+    }
+
+    if (saveBtn) {
+        saveBtn.addEventListener('click', () => {
+            try { if (window.gestureWS && window.gestureWS.readyState === WebSocket.OPEN) window.gestureWS.send(JSON.stringify({type: 'save_config'})); } catch (e) {}
+        });
+    }
+
+    if (reloadBtn) {
+        reloadBtn.addEventListener('click', () => {
+            try { if (window.gestureWS && window.gestureWS.readyState === WebSocket.OPEN) window.gestureWS.send(JSON.stringify({type: 'reload_config'})); } catch (e) {}
+        });
+    }
+});
