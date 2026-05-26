@@ -108,6 +108,7 @@ from config import (
     ACTIVATION_RESET_S,
     ACTIVATION_BIMANUAL_WINDOW_S,
 )
+import config as config_mod
 from gesture_mapping import map_hand_actions
 
 import vigem_output
@@ -222,12 +223,56 @@ async def websocket_handler(websocket):
 
     logging.info(f"New client connected: {websocket.remote_address}")
     connected_clients.add(websocket)
+    # Load current gesture config for this connection (in-memory view)
+    current_cfg = config_mod.load_gesture_config() or {}
+
     try:
-        # Block until this client disconnects (remote close or error)
-        # websocket.wait_closed() yields control while waiting (doesn't block event loop)
-        await websocket.wait_closed()
+        # Process incoming messages from client until disconnect
+        async for raw in websocket:
+            try:
+                msg = json.loads(raw)
+            except Exception:
+                # Non-JSON payload — ignore or send error
+                await websocket.send(json.dumps({"type": "error", "message": "invalid_json"}))
+                continue
+
+            mtype = msg.get('type')
+            if mtype == 'get_config':
+                # Reply with the current in-memory config
+                await websocket.send(json.dumps({"type": "config", "data": current_cfg}))
+
+            elif mtype == 'update_config':
+                # Patch-shaped update expected: {"patch": {k: v, ...}}
+                patch = msg.get('patch')
+                if isinstance(patch, dict):
+                    # Shallow merge
+                    current_cfg.update(patch)
+                    # Apply to running process (module-level overrides)
+                    try:
+                        config_mod._apply_json_overrides(current_cfg)
+                    except Exception:
+                        pass
+                    # Acknowledge but do not persist on every slider move
+                    await websocket.send(json.dumps({"type": "update_ack", "data": patch}))
+                else:
+                    await websocket.send(json.dumps({"type": "error", "message": "invalid_patch"}))
+
+            elif mtype == 'save_config':
+                # Persist current_cfg to disk atomically
+                ok = config_mod.save_gesture_config(current_cfg)
+                await websocket.send(json.dumps({"type": "save_result", "ok": bool(ok)}))
+
+            elif mtype == 'reload_config':
+                # Re-read from disk and apply
+                current_cfg = config_mod.load_gesture_config() or {}
+                await websocket.send(json.dumps({"type": "config", "data": current_cfg}))
+
+            else:
+                # Unknown message type: echo for debugging
+                await websocket.send(json.dumps({"type": "error", "message": "unknown_type"}))
+
+        # End of async for — client disconnected
     finally:
-        # Cleanup: remove from active set (runs even if connection errors out)
         connected_clients.discard(websocket)
         logging.info(f"Client disconnected: {websocket.remote_address}")
 
