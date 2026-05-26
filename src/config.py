@@ -9,7 +9,7 @@ How to tune safely:
 # WebSocket
 # Use only when a browser/client needs live telemetry.
 # Keep disabled for normal controller-only usage.
-WEBSOCKET_ENABLED = False
+WEBSOCKET_ENABLED = True
 # Host and port used when websocket is enabled.
 WEBSOCKET_HOST = "localhost"
 WEBSOCKET_PORT = 8765
