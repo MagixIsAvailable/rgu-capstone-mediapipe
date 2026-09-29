@@ -10,7 +10,8 @@ venv/
 
 # Distribution / packaging
 .Python
-build/
+build/*
+!build/VisionInput_Installer.iss
 develop-eggs/
 dist/
 downloads/
@@ -33,6 +34,7 @@ MANIFEST
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+!visioninput.spec
 
 # Installer logs
 pip-log.txt
