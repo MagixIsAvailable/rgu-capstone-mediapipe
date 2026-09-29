@@ -41,7 +41,7 @@ except Exception:
     _mediapipe_datas = []
 
 # Ensure gesture_map.json absolute path is included when present
-_mapfile = Path(__file__).resolve().parent / 'config' / 'gesture_map.json'
+_mapfile = Path(SPECPATH) / 'config' / 'gesture_map.json'
 if _mapfile.exists():
     _gesture_map_data = [(str(_mapfile), 'config')]
 else:
